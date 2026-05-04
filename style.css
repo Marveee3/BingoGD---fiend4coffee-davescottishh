@@ -102,6 +102,83 @@ body {
     font-size: 0.8em;
 }
 
+/* Группа левых кнопок (донат + музыка) */
+.button-group-left {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 100;
+    align-items: center;
+}
+
+.dnt-button-link {
+    text-decoration: none;
+}
+
+.dnt-button {
+    padding: 12px 24px;
+    background-color: #000;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+    border-radius: 40px;
+    transition: background-color 0.2s, opacity 0.2s;
+    white-space: nowrap;
+}
+
+.dnt-button:hover {
+    background-color: #333;
+}
+
+/* Кнопка музыки - уменьшенная иконка без текста */
+.music-toggle-button {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    background-color: #000;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background-color 0.2s, opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.music-toggle-button:hover {
+    background-color: #333;
+}
+
+.music-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+/* Состояние выключенной музыки (показываем перечеркнутую иконку) */
+.music-toggle-button.muted .music-on-icon {
+    display: none;
+}
+
+.music-toggle-button.muted .music-off-icon {
+    display: block;
+}
+
+.music-toggle-button:not(.muted) .music-on-icon {
+    display: block;
+}
+
+.music-toggle-button:not(.muted) .music-off-icon {
+    display: none;
+}
+
+/* Правая кнопка сохранения */
 .save-button {
     position: fixed;
     bottom: 20px;
@@ -114,7 +191,7 @@ body {
     font-family: Arial, sans-serif;
     font-weight: bold;
     z-index: 100;
-    transition: opacity 0.2s;
+    transition: background-color 0.2s, opacity 0.2s;
     border-radius: 40px;
 }
 
@@ -122,29 +199,38 @@ body {
     background-color: #333;
 }
 
-.dnt-button {
-    position: fixed;
-    bottom: 20px;
-    left: 20px;
-    padding: 12px 24px;
-    background-color: #000;
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    font-family: Arial, sans-serif;
-    font-weight: bold;
-    z-index: 100;
-    transition: opacity 0.2s;
-    border-radius: 40px;
-}
-
-.dnt-button:hover {
-    background-color: #333;
-}
-
+/* Адаптивность для мобильных устройств */
 @media (max-width: 600px) {
     .grid-main {
         --max-grid-size: min(90vw, 70vh);
+    }
+    
+    .button-group-left {
+        bottom: 16px;
+        left: 16px;
+        gap: 8px;
+    }
+    
+    .dnt-button {
+        padding: 10px 18px;
+        font-size: 14px;
+    }
+    
+    .music-toggle-button {
+        width: 34px;
+        height: 34px;
+    }
+    
+    .music-icon {
+        width: 14px;
+        height: 14px;
+    }
+    
+    .save-button {
+        bottom: 16px;
+        right: 16px;
+        padding: 10px 18px;
+        font-size: 14px;
     }
 }
 
@@ -154,6 +240,52 @@ body {
     }
     .banner {
         max-height: 10vh;
+    }
+    
+    .button-group-left {
+        bottom: 12px;
+        left: 12px;
+        gap: 8px;
+    }
+    
+    .dnt-button {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+    
+    .music-toggle-button {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .save-button {
+        bottom: 12px;
+        right: 12px;
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+}
+
+/* Очень маленькие экраны */
+@media (max-width: 480px) {
+    .dnt-button {
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+    
+    .music-toggle-button {
+        width: 30px;
+        height: 30px;
+    }
+    
+    .music-icon {
+        width: 13px;
+        height: 13px;
+    }
+    
+    .save-button {
+        padding: 8px 14px;
+        font-size: 12px;
     }
 }
 

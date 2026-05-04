@@ -7,8 +7,95 @@
     const container = document.getElementById('smartGrid');
     const saveBtn = document.getElementById('saveBtn');
     const captureArea = document.getElementById('captureArea');
+    
+    // Музыкальные элементы
+    const bgMusic = document.getElementById('bgMusic');
+    const musicToggleBtn = document.getElementById('musicToggleBtn');
 
     if (!container) return;
+
+    // --- Инициализация музыки с автоматическим запуском ---
+    let musicEnabled = true;
+    
+    // Функция для запуска музыки
+    function playMusic() {
+        if (!bgMusic || !musicEnabled) return;
+        
+        bgMusic.volume = 0.3; // Умеренная громкость
+        
+        const playPromise = bgMusic.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.log("Автовоспроизведение заблокировано браузером:", error);
+                // Если автовоспроизведение заблокировано, пробуем при клике
+                const tryPlayOnInteraction = function() {
+                    if (musicEnabled) {
+                        bgMusic.play().catch(e => console.log("Play error:", e));
+                    }
+                    document.removeEventListener('click', tryPlayOnInteraction);
+                    document.removeEventListener('touchstart', tryPlayOnInteraction);
+                };
+                document.addEventListener('click', tryPlayOnInteraction);
+                document.addEventListener('touchstart', tryPlayOnInteraction);
+            });
+        }
+    }
+    
+    // Функция включения музыки
+    function enableMusic() {
+        if (!bgMusic) return;
+        musicEnabled = true;
+        musicToggleBtn.classList.remove('muted');
+        playMusic();
+    }
+    
+    // Функция выключения музыки
+    function disableMusic() {
+        if (!bgMusic) return;
+        musicEnabled = false;
+        musicToggleBtn.classList.add('muted');
+        bgMusic.pause();
+    }
+    
+    // Переключение музыки по кнопке
+    function toggleMusic() {
+        if (!bgMusic) return;
+        
+        if (musicEnabled) {
+            disableMusic();
+        } else {
+            enableMusic();
+        }
+    }
+    
+    // Инициализация обработчиков музыки
+    if (bgMusic && musicToggleBtn) {
+        // Загружаем музыку
+        bgMusic.load();
+        
+        // Устанавливаем начальное состояние (включено)
+        musicEnabled = true;
+        musicToggleBtn.classList.remove('muted');
+        
+        // Пробуем запустить сразу при загрузке
+        setTimeout(() => {
+            playMusic();
+        }, 100);
+        
+        // Обработчик кнопки музыки
+        musicToggleBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleMusic();
+        });
+        
+        // Если музыка закончилась, перезапускаем (хотя loop атрибут должен работать)
+        bgMusic.addEventListener('ended', function() {
+            if (musicEnabled) {
+                this.currentTime = 0;
+                this.play().catch(e => console.log("Replay error:", e));
+            }
+        });
+    }
 
     function fitFontSize(el) {
         const text = el.innerText.trim();
@@ -64,6 +151,9 @@
         saveBtn.onclick = function() {
             fitAllFontSizes();
             
+            // Сохраняем состояние музыки
+            const wasMusicPlaying = musicEnabled && bgMusic && !bgMusic.paused;
+            
             const originalText = saveBtn.innerText;
             saveBtn.innerText = "Создание...";
             saveBtn.disabled = true;
@@ -78,6 +168,18 @@
                 onclone: (clonedDoc) => {
                     const btn = clonedDoc.getElementById('saveBtn');
                     if (btn) btn.style.display = 'none';
+                    
+                    const musicBtn = clonedDoc.getElementById('musicToggleBtn');
+                    if (musicBtn) musicBtn.style.display = 'none';
+                    
+                    const dntBtnLink = clonedDoc.querySelector('.dnt-button-link');
+                    if (dntBtnLink) dntBtnLink.style.display = 'none';
+                    
+                    const buttonGroup = clonedDoc.querySelector('.button-group-left');
+                    if (buttonGroup) buttonGroup.style.display = 'none';
+                    
+                    const audio = clonedDoc.getElementById('bgMusic');
+                    if (audio) audio.style.display = 'none';
                     
                     clonedDoc.querySelectorAll('.banner').forEach(banner => {
                         banner.style.width = 'auto';

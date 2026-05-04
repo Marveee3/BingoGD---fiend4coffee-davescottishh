@@ -8,11 +8,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
-    <!-- Экран загрузки -->
+    <!-- Экран загрузки (только для изображений) -->
     <div id="loadingScreen" class="loading-screen">
         <div class="loading-container">
             <div class="loading-spinner"></div>
-            <div class="loading-text">Загрузка...</div>
+            <div class="loading-text" id="loadingText">Загрузка</div>
             <div class="loading-progress">
                 <div class="loading-progress-bar"></div>
             </div>
@@ -51,7 +51,7 @@
     <button id="saveBtn" class="save-button" style="opacity: 0; visibility: hidden;">Сохранить как фото</button>
     <a href="https://github.com/Marveee3"><p>by marveee</p></a>
     
-    <audio id="bgMusic" loop preload="auto" autoplay>
+    <audio id="bgMusic" loop preload="auto">
         <source src="sound/bg.ogg" type="audio/ogg">
     </audio>
     

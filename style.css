@@ -68,6 +68,25 @@ body {
     color: #000;
     margin-bottom: 20px;
     font-weight: 500;
+    font-family: monospace;
+    min-width: 120px;
+    display: inline-block;
+}
+
+/* Анимация для текста загрузки с точками */
+.loading-text::after {
+    content: '';
+    display: inline-block;
+    width: 24px;
+    text-align: left;
+    animation: dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: ''; }
+    40% { content: '.'; }
+    60% { content: '..'; }
+    80%, 100% { content: '...'; }
 }
 
 .loading-progress {

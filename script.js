@@ -16,20 +16,20 @@
 
     if (!container) return;
 
-    // --- Управление загрузкой ---
-    let loadedItems = 0;
-    let totalItemsToLoad = 0;
+    // --- Управление загрузкой ТОЛЬКО для изображений ---
+    let loadedImages = 0;
+    let totalImagesToLoad = 0;
     const progressBar = document.querySelector('.loading-progress-bar');
     const mainElements = [captureArea, document.querySelector('.button-group-left'), saveBtn];
     
-    // Функция обновления прогресса загрузки
+    // Функция обновления прогресса загрузки изображений
     function updateLoadingProgress() {
         if (!progressBar) return;
-        const progress = (loadedItems / totalItemsToLoad) * 100;
+        const progress = (loadedImages / totalImagesToLoad) * 100;
         progressBar.style.width = progress + '%';
         
-        if (loadedItems >= totalItemsToLoad && totalItemsToLoad > 0) {
-            // Все загружено, скрываем экран загрузки
+        if (loadedImages >= totalImagesToLoad && totalImagesToLoad > 0) {
+            // Все изображения загружены, скрываем экран загрузки
             setTimeout(() => {
                 if (loadingScreen) {
                     loadingScreen.classList.add('fade-out');
@@ -45,22 +45,16 @@
                         el.classList.add('fade-in');
                     }
                 });
-                // Запускаем музыку после загрузки
-                initMusic();
             }, 300);
         }
     }
     
-    // Подсчет элементов для загрузки
-    function countLoadingItems() {
-        // Считаем изображения баннеров
+    // Подсчет изображений для загрузки
+    function countImagesToLoad() {
         const images = document.querySelectorAll('.banner');
-        totalItemsToLoad += images.length;
+        totalImagesToLoad = images.length;
         
-        // Аудио тоже считается
-        if (bgMusic) totalItemsToLoad += 1;
-        
-        if (totalItemsToLoad === 0) {
+        if (totalImagesToLoad === 0) {
             updateLoadingProgress();
         }
     }
@@ -70,50 +64,30 @@
         const images = document.querySelectorAll('.banner');
         images.forEach(img => {
             if (img.complete) {
-                loadedItems++;
+                loadedImages++;
                 updateLoadingProgress();
             } else {
                 img.addEventListener('load', () => {
-                    loadedItems++;
+                    loadedImages++;
                     updateLoadingProgress();
                 });
                 img.addEventListener('error', () => {
                     // Даже если ошибка, считаем загруженным
-                    loadedItems++;
+                    loadedImages++;
                     updateLoadingProgress();
                 });
             }
         });
     }
     
-    // Отслеживание загрузки аудио
-    function setupAudioLoading() {
-        if (!bgMusic) {
-            if (totalItemsToLoad > 0) updateLoadingProgress();
-            return;
-        }
-        
-        const handleAudioLoad = () => {
-            loadedItems++;
-            updateLoadingProgress();
-        };
-        
-        if (bgMusic.readyState >= 2) {
-            handleAudioLoad();
-        } else {
-            bgMusic.addEventListener('canplaythrough', handleAudioLoad, { once: true });
-            bgMusic.addEventListener('error', handleAudioLoad, { once: true });
-        }
-    }
-    
-    // Инициализация всех загрузок
-    countLoadingItems();
+    // Инициализация загрузки изображений
+    countImagesToLoad();
     setupImageLoading();
-    setupAudioLoading();
 
-    // --- Инициализация музыки с автоматическим запуском ---
+    // --- Инициализация музыки (фоновая загрузка, без ожидания) ---
     let musicEnabled = true;
     let musicInitialized = false;
+    let musicReady = false;
     
     function playMusic() {
         if (!bgMusic || !musicEnabled) return;
@@ -141,7 +115,9 @@
         if (!bgMusic) return;
         musicEnabled = true;
         musicToggleBtn.classList.remove('muted');
-        playMusic();
+        if (musicReady) {
+            playMusic();
+        }
     }
     
     function disableMusic() {
@@ -168,14 +144,20 @@
             musicEnabled = true;
             musicToggleBtn.classList.remove('muted');
             
-            setTimeout(() => {
-                playMusic();
-            }, 100);
-            
-            musicToggleBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                toggleMusic();
-            });
+            // Проверяем готовность аудио
+            if (bgMusic.readyState >= 2) {
+                musicReady = true;
+                setTimeout(() => {
+                    playMusic();
+                }, 100);
+            } else {
+                bgMusic.addEventListener('canplaythrough', () => {
+                    musicReady = true;
+                    if (musicEnabled) {
+                        playMusic();
+                    }
+                }, { once: true });
+            }
             
             bgMusic.addEventListener('ended', function() {
                 if (musicEnabled) {
@@ -183,8 +165,18 @@
                     this.play().catch(e => console.log("Replay error:", e));
                 }
             });
+            
+            musicToggleBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleMusic();
+            });
         }
     }
+    
+    // Запускаем инициализацию музыки в фоне (через 500 мс после загрузки страницы)
+    setTimeout(() => {
+        initMusic();
+    }, 500);
 
     // --- Функции для сетки бинго ---
     function fitFontSize(el) {
@@ -341,7 +333,6 @@
 
             setTimeout(() => {
                 html2canvas(captureArea, options).then(canvas => {
-                    // Обрезаем canvas по ширине нижнего баннера
                     return cropToBannerWidth(canvas);
                 }).then(finalCanvas => {
                     try {

@@ -293,6 +293,7 @@
 
     // --- Сохранение с увеличенным шрифтом и отступами ---
     // --- Сохранение с увеличенным шрифтом и отступами ---
+        // --- Сохранение с конвертацией баннеров в base64 ---
     if (saveBtn) {
         const DomToImageLib = window.domtoimage;
         if (!DomToImageLib) {
@@ -311,6 +312,16 @@
                 }
                 fitAllFontSizes();
 
+                // Показываем модальное окно сохранения
+                let saveModal = document.getElementById('saveModal');
+                if (!saveModal) {
+                    saveModal = document.createElement('div');
+                    saveModal.id = 'saveModal';
+                    saveModal.innerHTML = '<div class="save-modal-content"><div class="save-spinner"></div><p>Создаём изображение…</p></div>';
+                    document.body.appendChild(saveModal);
+                }
+                saveModal.style.display = 'flex';
+
                 const originalHTML = saveBtn.innerHTML;
                 saveBtn.innerHTML = `
                     <span class="save-spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top:2px solid transparent;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;"></span>
@@ -319,7 +330,6 @@
                 saveBtn.disabled = true;
 
                 let cloneContainer = null;
-                let overlay = null;
                 const originalMaxFontSize = MAX_FONT_SIZE;
 
                 try {
@@ -339,33 +349,15 @@
                         throw new Error('Баннеры не загрузились или имеют нулевой размер.');
                     }
 
-                    // -- ПАРАМЕТРЫ ЭКСПОРТА --
                     const EXPORT_WIDTH = 1250;
                     const SIDE_PADDING = 25;
-                    const pixelRatio = 1;
-                    // -----------------------
+                    const pixelRatio = Math.min(window.devicePixelRatio || 2, 2); // для мобильных качество
 
-                    // 1. Создаём оверлей, который скроет клон от глаз пользователя
-                    overlay = document.createElement('div');
-                    overlay.style.position = 'fixed';
-                    overlay.style.top = '0';
-                    overlay.style.left = '0';
-                    overlay.style.width = '100vw';
-                    overlay.style.height = '100vh';
-                    overlay.style.backgroundColor = '#fff6ef';
-                    overlay.style.zIndex = '999998';   // почти над всем
-                    overlay.style.display = 'flex';
-                    overlay.style.alignItems = 'center';
-                    overlay.style.justifyContent = 'center';
-                    overlay.innerHTML = '<div style="font-size:20px;">Создание изображения...</div>';
-                    document.body.appendChild(overlay);
-
-                    // 2. Клон размещаем в левом верхнем углу, но поверх оверлея (z-index больше)
+                    // Клон за пределами экрана
                     cloneContainer = document.createElement('div');
-                    cloneContainer.style.position = 'fixed';
+                    cloneContainer.style.position = 'absolute';
                     cloneContainer.style.top = '0';
-                    cloneContainer.style.left = '0';
-                    cloneContainer.style.zIndex = '999999';  // выше оверлея → будет отрендерен, но оверлей скроет
+                    cloneContainer.style.left = '-9999px';
                     cloneContainer.style.backgroundColor = '#fff6ef';
                     cloneContainer.style.width = EXPORT_WIDTH + 'px';
                     cloneContainer.style.paddingLeft = SIDE_PADDING + 'px';
@@ -388,27 +380,26 @@
                     bottomClone.style.width = '100%';
                     cloneContainer.appendChild(bottomClone);
 
-                    // Убираем max-height у баннеров
+                    // Снимаем ограничения высоты баннеров
                     cloneContainer.querySelectorAll('.banner').forEach(img => {
                         img.style.maxHeight = 'none';
                         img.style.height = 'auto';
-                        img.loading = 'eager';   // гарантирует загрузку даже вне видимой области (на всякий случай)
+                        img.loading = 'eager';
                     });
 
                     document.body.appendChild(cloneContainer);
 
-                    // Даём браузеру кадр, чтобы начать рендеринг
+                    // Даём браузеру кадр
                     await new Promise(resolve => requestAnimationFrame(resolve));
                     await new Promise(resolve => requestAnimationFrame(resolve));
 
-                    // Временно поднимаем лимит шрифта
+                    // Увеличиваем лимит шрифта
                     MAX_FONT_SIZE = 2000;
-
                     const cloneEditables = cloneContainer.querySelectorAll('.cell-editable');
                     cloneEditables.forEach(el => {
                         el.style.lineHeight = '1.1';
+                        fitFontSizeForExport(el);
                     });
-                    cloneEditables.forEach(el => fitFontSizeForExport(el));
                     await new Promise(r => setTimeout(r, 50));
                     cloneEditables.forEach(el => fitFontSizeForExport(el));
 
@@ -428,20 +419,38 @@
                         });
                     }));
 
-                    await new Promise(r => setTimeout(r, 200));
+                    // Конвертируем все img в data URL для абсолютной надёжности
+                    const convertImgToDataURL = (img) => {
+                        return new Promise((resolve, reject) => {
+                            if (img.src.startsWith('data:')) {
+                                resolve(); // уже data URL
+                                return;
+                            }
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.naturalWidth;
+                            canvas.height = img.naturalHeight;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            try {
+                                const dataUrl = canvas.toDataURL('image/png');
+                                img.src = dataUrl;
+                                resolve();
+                            } catch (err) {
+                                reject(new Error('Не удалось преобразовать изображение в data URL'));
+                            }
+                        });
+                    };
 
-                    // Проверяем, что баннеры имеют ненулевую высоту
-                    const clonedBanners = cloneContainer.querySelectorAll('.banner');
-                    if (Array.from(clonedBanners).some(img => img.offsetHeight === 0)) {
-                        throw new Error('Баннер в клоне имеет нулевую высоту.');
-                    }
+                    await Promise.all(Array.from(cloneContainer.querySelectorAll('img')).map(convertImgToDataURL));
 
-                    // Теперь клон точно отрендерен, можно делать снимок
+                    // Ждём рендеринга с новыми src
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+
                     const dataUrl = await DomToImageLib.toPng(cloneContainer, {
                         quality: 1,
                         pixelRatio: pixelRatio,
                         backgroundColor: '#fff6ef',
-                        cacheBust: true,
+                        cacheBust: false,        // не перезагружаем, всё уже в data URL
                     });
 
                     const link = document.createElement('a');
@@ -459,9 +468,8 @@
                     if (cloneContainer) {
                         document.body.removeChild(cloneContainer);
                     }
-                    if (overlay) {
-                        document.body.removeChild(overlay);
-                    }
+                    const saveModal = document.getElementById('saveModal');
+                    if (saveModal) saveModal.style.display = 'none';
                     saveBtn.innerHTML = originalHTML;
                     saveBtn.disabled = false;
                     isSaving = false;

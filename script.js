@@ -3,6 +3,7 @@
     const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
     const MIN_FONT_SIZE = 6;
     const MAX_FONT_SIZE = 40;
+    const WRAP_THRESHOLD = 15;
 
     const container = document.getElementById('smartGrid');
     const saveBtn = document.getElementById('saveBtn');
@@ -10,26 +11,23 @@
     const loadingScreen = document.getElementById('loadingScreen');
     const bottomBanner = document.getElementById('bottomBanner');
     
-    // Музыкальные элементы
     const bgMusic = document.getElementById('bgMusic');
     const musicToggleBtn = document.getElementById('musicToggleBtn');
 
     if (!container) return;
 
-    // --- Управление загрузкой ТОЛЬКО для изображений ---
     let loadedImages = 0;
     let totalImagesToLoad = 0;
     const progressBar = document.querySelector('.loading-progress-bar');
-    const mainElements = [captureArea, document.querySelector('.button-group-left'), saveBtn];
-    
-    // Функция обновления прогресса загрузки изображений
+    let isSaving = false;
+
+    // --- Загрузка баннеров ---
     function updateLoadingProgress() {
         if (!progressBar) return;
         const progress = (loadedImages / totalImagesToLoad) * 100;
         progressBar.style.width = progress + '%';
         
         if (loadedImages >= totalImagesToLoad && totalImagesToLoad > 0) {
-            // Все изображения загружены, скрываем экран загрузки
             setTimeout(() => {
                 if (loadingScreen) {
                     loadingScreen.classList.add('fade-out');
@@ -37,29 +35,20 @@
                         loadingScreen.style.display = 'none';
                     }, 500);
                 }
-                // Показываем основной контент с анимацией
-                mainElements.forEach(el => {
-                    if (el) {
-                        el.style.opacity = '1';
-                        el.style.visibility = 'visible';
-                        el.classList.add('fade-in');
-                    }
-                });
+                captureArea.style.opacity = '1';
+                captureArea.style.visibility = 'visible';
+                captureArea.classList.add('fade-in');
+                adjustLayout();
             }, 300);
         }
     }
     
-    // Подсчет изображений для загрузки
     function countImagesToLoad() {
         const images = document.querySelectorAll('.banner');
         totalImagesToLoad = images.length;
-        
-        if (totalImagesToLoad === 0) {
-            updateLoadingProgress();
-        }
+        if (totalImagesToLoad === 0) updateLoadingProgress();
     }
     
-    // Отслеживание загрузки изображений
     function setupImageLoading() {
         const images = document.querySelectorAll('.banner');
         images.forEach(img => {
@@ -72,7 +61,6 @@
                     updateLoadingProgress();
                 });
                 img.addEventListener('error', () => {
-                    // Даже если ошибка, считаем загруженным
                     loadedImages++;
                     updateLoadingProgress();
                 });
@@ -80,24 +68,20 @@
         });
     }
     
-    // Инициализация загрузки изображений
     countImagesToLoad();
     setupImageLoading();
 
-    // --- Инициализация музыки (фоновая загрузка, без ожидания) ---
+    // --- Музыка ---
     let musicEnabled = true;
     let musicInitialized = false;
     let musicReady = false;
     
     function playMusic() {
         if (!bgMusic || !musicEnabled) return;
-        
         bgMusic.volume = 0.3;
-        
         const playPromise = bgMusic.play();
         if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                console.log("Автовоспроизведение заблокировано браузером:", error);
+            playPromise.catch(() => {
                 const tryPlayOnInteraction = function() {
                     if (musicEnabled && bgMusic) {
                         bgMusic.play().catch(e => console.log("Play error:", e));
@@ -115,9 +99,7 @@
         if (!bgMusic) return;
         musicEnabled = true;
         musicToggleBtn.classList.remove('muted');
-        if (musicReady) {
-            playMusic();
-        }
+        if (musicReady) playMusic();
     }
     
     function disableMusic() {
@@ -128,74 +110,77 @@
     }
     
     function toggleMusic() {
-        if (!bgMusic) return;
-        if (musicEnabled) {
-            disableMusic();
-        } else {
-            enableMusic();
-        }
+        musicEnabled ? disableMusic() : enableMusic();
     }
     
     function initMusic() {
         if (musicInitialized) return;
         musicInitialized = true;
-        
         if (bgMusic && musicToggleBtn) {
             musicEnabled = true;
             musicToggleBtn.classList.remove('muted');
-            
-            // Проверяем готовность аудио
             if (bgMusic.readyState >= 2) {
                 musicReady = true;
-                setTimeout(() => {
-                    playMusic();
-                }, 100);
+                setTimeout(() => playMusic(), 100);
             } else {
                 bgMusic.addEventListener('canplaythrough', () => {
                     musicReady = true;
-                    if (musicEnabled) {
-                        playMusic();
-                    }
+                    if (musicEnabled) playMusic();
                 }, { once: true });
             }
-            
             bgMusic.addEventListener('ended', function() {
                 if (musicEnabled) {
                     this.currentTime = 0;
                     this.play().catch(e => console.log("Replay error:", e));
                 }
             });
-            
-            musicToggleBtn.addEventListener('click', function(e) {
+            musicToggleBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 toggleMusic();
             });
         }
     }
-    
-    // Запускаем инициализацию музыки в фоне (через 500 мс после загрузки страницы)
-    setTimeout(() => {
-        initMusic();
-    }, 500);
+    setTimeout(initMusic, 500);
 
-    // --- Функции для сетки бинго ---
+    // --- Подбор шрифта ---
     function fitFontSize(el) {
         const text = el.innerText.trim();
         if (!text) {
             el.style.fontSize = '1rem';
             return;
         }
-        let low = MIN_FONT_SIZE;
-        let high = MAX_FONT_SIZE;
-        let best = MIN_FONT_SIZE;
         const parent = el.parentElement;
         if (!parent) return;
-
+        let low = MIN_FONT_SIZE, high = MAX_FONT_SIZE, best = MIN_FONT_SIZE;
+        el.style.whiteSpace = 'nowrap';
+        el.style.wordBreak = 'normal';
+        el.style.overflowWrap = 'normal';
         while (low <= high) {
             const mid = Math.floor((low + high) / 2);
             el.style.fontSize = mid + 'px';
-            if (el.scrollHeight <= parent.clientHeight + 1 && 
-                el.scrollWidth <= parent.clientWidth + 1) {
+            if (el.scrollHeight <= parent.clientHeight + 1 && el.scrollWidth <= parent.clientWidth + 1) {
+                best = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        if (best >= WRAP_THRESHOLD) {
+            el.style.fontSize = best + 'px';
+            return;
+        }
+        el.style.whiteSpace = 'pre-wrap';
+        el.style.wordBreak = 'break-word';
+        el.style.overflowWrap = 'break-word';
+        el.style.fontSize = WRAP_THRESHOLD + 'px';
+        if (el.scrollHeight <= parent.clientHeight + 1) return;
+        low = MIN_FONT_SIZE;
+        high = WRAP_THRESHOLD;
+        best = MIN_FONT_SIZE;
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            el.style.fontSize = mid + 'px';
+            if (el.scrollHeight <= parent.clientHeight + 1) {
                 best = mid;
                 low = mid + 1;
             } else {
@@ -209,7 +194,7 @@
         document.querySelectorAll('.cell-editable').forEach(fitFontSize);
     }
 
-    // Создание сетки
+    // --- Создание сетки ---
     container.innerHTML = '';
     for (let i = 1; i <= TOTAL_CELLS; i++) {
         const cell = document.createElement('div');
@@ -230,141 +215,150 @@
         container.appendChild(cell);
     }
 
-    // Функция обрезки изображения по ширине нижнего баннера
-    function cropToBannerWidth(canvas) {
-        return new Promise((resolve) => {
-            // Получаем реальные размеры нижнего баннера в DOM
-            if (!bottomBanner) {
-                resolve(canvas);
-                return;
-            }
-            
-            // Получаем bounding rectangle элемента
-            const bannerRect = bottomBanner.getBoundingClientRect();
-            const captureRect = captureArea.getBoundingClientRect();
-            
-            // Вычисляем позицию баннера относительно captureArea
-            const bannerX = bannerRect.left - captureRect.left;
-            const bannerWidth = bannerRect.width;
-            
-            // Масштабируем координаты под размер canvas (scale = 2 в html2canvas)
-            const scale = 2;
-            const cropX = Math.max(0, bannerX * scale);
-            const cropWidth = bannerWidth * scale;
-            const canvasWidth = canvas.width;
-            
-            // Определяем итоговую ширину обрезки (не больше самого canvas)
-            const finalCropX = Math.min(cropX, canvasWidth - 10);
-            const finalCropWidth = Math.min(cropWidth, canvasWidth - finalCropX);
-            
-            if (finalCropWidth <= 0 || finalCropX >= canvasWidth) {
-                resolve(canvas);
-                return;
-            }
-            
-            // Создаем временный canvas для обрезки
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = finalCropWidth;
-            tempCanvas.height = canvas.height;
-            const ctx = tempCanvas.getContext('2d');
-            
-            // Рисуем обрезанное изображение
-            ctx.drawImage(
-                canvas,
-                finalCropX, 0, finalCropWidth, canvas.height,
-                0, 0, finalCropWidth, canvas.height
-            );
-            
-            resolve(tempCanvas);
-        });
+    function adjustLayout() {
+        const topBanner = document.querySelector('.top-banner');
+        const bottomBannerEl = document.getElementById('bottomBanner');
+        const buttonRow = document.querySelector('.button-row');
+        if (!topBanner || !bottomBannerEl || !buttonRow || !captureArea) return;
+        const topHeight = topBanner.offsetHeight;
+        const bottomHeight = bottomBannerEl.offsetHeight;
+        const buttonHeight = buttonRow.offsetHeight;
+        const totalNonGrid = topHeight + bottomHeight + buttonHeight;
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        const availableSquare = viewportHeight - totalNonGrid;
+        const newWidth = Math.min(viewportWidth * 0.8, availableSquare);
+        const finalWidth = Math.max(newWidth, 240);
+        captureArea.style.width = finalWidth + 'px';
+        fitAllFontSizes();
     }
 
-    // Сохранение скриншота с обрезкой по ширине bottomBanner
-    if (saveBtn) {
-        saveBtn.onclick = function() {
+    // --- Обрезка изображения по области между верхним и нижним баннерами, с шириной нижнего баннера ---
+    async function cropToBannersArea(fullCanvas, captureRect, topBannerRect, bottomBannerRect) {
+        // Определяем область обрезки в координатах captureArea (без масштаба)
+        const cropX = (captureRect.width - bottomBannerRect.width) / 2;   // центрируем по ширине нижнего баннера
+        const cropY = topBannerRect.top - captureRect.top;                // от верхнего края верхнего баннера
+        const cropWidth = bottomBannerRect.width;
+        const cropHeight = bottomBannerRect.bottom - topBannerRect.top;    // до нижнего края нижнего баннера
+
+        if (cropWidth <= 0 || cropHeight <= 0) {
+            throw new Error('Некорректные размеры обрезки: проверьте отображение баннеров');
+        }
+
+        // Масштабируем под размер canvas
+        const scaleX = fullCanvas.width / captureRect.width;
+        const scaleY = fullCanvas.height / captureRect.height;
+        // Используем единый масштаб (при рендеринге с pixelRatio=2 он одинаков по обеим осям)
+        const sx = cropX * scaleX;
+        const sy = cropY * scaleY;
+        const sw = cropWidth * scaleX;
+        const sh = cropHeight * scaleY;
+
+        // Защита от выходов за границы
+        const safeSx = Math.max(0, sx);
+        const safeSy = Math.max(0, sy);
+        const safeSw = Math.min(sw, fullCanvas.width - safeSx);
+        const safeSh = Math.min(sh, fullCanvas.height - safeSy);
+
+        if (safeSw <= 0 || safeSh <= 0) {
+            throw new Error('Обрезаемая область выходит за пределы изображения');
+        }
+
+        const croppedCanvas = document.createElement('canvas');
+        croppedCanvas.width = safeSw;
+        croppedCanvas.height = safeSh;
+        const ctx = croppedCanvas.getContext('2d');
+        ctx.drawImage(fullCanvas, safeSx, safeSy, safeSw, safeSh, 0, 0, safeSw, safeSh);
+        return croppedCanvas;
+    }
+
+    // --- Сохранение через html-to-image с обрезкой между баннерами ---
+    if (saveBtn && window.htmlToImage) {
+        saveBtn.onclick = async function() {
+            if (isSaving) return;
+            isSaving = true;
+            
+            if (document.activeElement && document.activeElement.blur) {
+                document.activeElement.blur();
+            }
             fitAllFontSizes();
             
             const originalText = saveBtn.innerText;
             saveBtn.innerText = "Создание...";
             saveBtn.disabled = true;
             saveBtn.style.opacity = '0';
-
-            const options = {
-                backgroundColor: '#fff6ef',
-                scale: 2,
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
-                onclone: (clonedDoc) => {
-                    const btn = clonedDoc.getElementById('saveBtn');
-                    if (btn) btn.style.display = 'none';
-                    
-                    const musicBtn = clonedDoc.getElementById('musicToggleBtn');
-                    if (musicBtn) musicBtn.style.display = 'none';
-                    
-                    const dntBtnLink = clonedDoc.querySelector('.dnt-button-link');
-                    if (dntBtnLink) dntBtnLink.style.display = 'none';
-                    
-                    const buttonGroup = clonedDoc.querySelector('.button-group-left');
-                    if (buttonGroup) buttonGroup.style.display = 'none';
-                    
-                    const audio = clonedDoc.getElementById('bgMusic');
-                    if (audio) audio.style.display = 'none';
-                    
-                    const loadingScrn = clonedDoc.querySelector('.loading-screen');
-                    if (loadingScrn) loadingScrn.style.display = 'none';
-                    
-                    const githubLink = clonedDoc.querySelector('a[href="https://github.com/Marveee3"]');
-                    if (githubLink) githubLink.style.display = 'none';
-                    
-                    clonedDoc.querySelectorAll('.banner').forEach(banner => {
-                        banner.style.width = 'auto';
-                        banner.style.maxWidth = '100%';
-                        banner.style.height = 'auto';
-                        banner.style.objectFit = 'none';
-                    });
-
-                    const grid = clonedDoc.getElementById('smartGrid');
-                    if (grid) {
-                        grid.style.display = 'grid';
-                    }
+            
+            try {
+                // Получаем элементы баннеров для обрезки
+                const topBanner = document.querySelector('.top-banner');
+                const bottomBannerEl = document.getElementById('bottomBanner');
+                if (!topBanner || !bottomBannerEl) {
+                    throw new Error('Верхний или нижний баннер не найден');
                 }
-            };
 
-            setTimeout(() => {
-                html2canvas(captureArea, options).then(canvas => {
-                    return cropToBannerWidth(canvas);
-                }).then(finalCanvas => {
-                    try {
-                        const link = document.createElement('a');
-                        link.download = `bingo_${Date.now()}.png`;
-                        link.href = finalCanvas.toDataURL('image/png');
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    } catch (e) {
-                        console.error(e);
-                        const dataUrl = finalCanvas.toDataURL();
-                        const win = window.open();
-                        if (win) win.document.write('<img src="' + dataUrl + '" style="max-width:100%">');
-                    }
-                }).finally(() => {
-                    saveBtn.innerText = originalText;
-                    saveBtn.disabled = false;
-                    saveBtn.style.opacity = '1';
+                // Сначала рендерим всю captureArea
+                const dataUrl = await window.htmlToImage.toPng(captureArea, {
+                    quality: 1,
+                    pixelRatio: 2,
+                    backgroundColor: '#fff6ef',
+                    cacheBust: true,
                 });
-            }, 200);
+                
+                // Загружаем в Image, чтобы получить canvas
+                const img = new Image();
+                img.src = dataUrl;
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                });
+                
+                const fullCanvas = document.createElement('canvas');
+                fullCanvas.width = img.width;
+                fullCanvas.height = img.height;
+                const ctx = fullCanvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                
+                // Получаем актуальные позиции элементов
+                const captureRect = captureArea.getBoundingClientRect();
+                const topRect = topBanner.getBoundingClientRect();
+                const bottomRect = bottomBannerEl.getBoundingClientRect();
+                
+                // Обрезаем по нужной области
+                const finalCanvas = await cropToBannersArea(fullCanvas, captureRect, topRect, bottomRect);
+                
+                // Скачиваем
+                const link = document.createElement('a');
+                link.download = `bingo_${Date.now()}.png`;
+                link.href = finalCanvas.toDataURL('image/png');
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+            } catch (error) {
+                console.error('Ошибка сохранения:', error);
+                alert('Не удалось сохранить изображение: ' + error.message);
+            } finally {
+                saveBtn.innerText = originalText;
+                saveBtn.disabled = false;
+                saveBtn.style.opacity = '1';
+                isSaving = false;
+            }
         };
+    } else if (saveBtn) {
+        console.warn('Библиотека html-to-image не загружена');
+        saveBtn.disabled = true;
+        saveBtn.title = 'Библиотека не загружена';
     }
 
-    // Применяем авторазмер после загрузки
     window.addEventListener('load', () => {
         fitAllFontSizes();
+        adjustLayout();
     });
-    
-    window.addEventListener('resize', fitAllFontSizes);
+    window.addEventListener('resize', adjustLayout);
     if (window.ResizeObserver) {
-        const ro = new ResizeObserver(fitAllFontSizes);
+        const ro = new ResizeObserver(() => {
+            if (!isSaving) fitAllFontSizes();
+        });
         ro.observe(container);
     }
 })();

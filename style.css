@@ -73,7 +73,6 @@ body {
     display: inline-block;
 }
 
-/* Анимация для текста загрузки с точками */
 .loading-text::after {
     content: '';
     display: inline-block;
@@ -105,39 +104,54 @@ body {
     transition: width 0.3s ease;
 }
 
+/* Основной контейнер */
 .parent {
-    width: 100%;
-    height: 100%;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0;
-    padding: 0;
+    padding: 10px;
     background: #fff6ef;
+    overflow: hidden;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 500px;
+}
+
+/* Баннеры */
+.banner-link {
+    width: 100%;
+    display: block;
+    text-decoration: none;
+}
+
+.banner-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
 }
 
 .banner {
     width: 100%;
-    max-width: 1080px;
     height: auto;
-    max-height: 15vh;
+    max-height: 12vh;
+    object-fit: contain;
     display: block;
-    flex-shrink: 0;
 }
 
+/* Сетка */
 .grid-main {
-    --max-grid-size: min(80vw, 864px, 50vh);
-    width: var(--max-grid-size);
-    height: var(--max-grid-size);
+    width: 100%;
+    aspect-ratio: 1 / 1;
     background-color: #000;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     grid-template-rows: repeat(5, 1fr);
     gap: 2px;
     border: 2px solid #000;
-    flex-shrink: 0;
-    margin: 0 auto;
+    flex-shrink: 1;
+    min-height: 0;
 }
 
 .grid-cell {
@@ -154,11 +168,13 @@ body {
 
 .cell-editable {
     width: 100%;
-    max-height: 100%;
+    height: 100%;
     padding: 4px;
     background: transparent;
     outline: none;
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
     word-break: break-word;
     overflow-wrap: break-word;
@@ -184,23 +200,29 @@ body {
     font-size: 0.8em;
 }
 
-/* Группа левых кнопок (донат + музыка) */
-.button-group-left {
-    position: fixed;
-    bottom: 20px;
-    left: 20px;
+/* Кнопки */
+.button-row {
+    width: 100%;
     display: flex;
-    gap: 10px;
-    z-index: 100;
+    justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    padding: 5px;
+    gap: 8px;
 }
 
-.dnt-button-link {
-    text-decoration: none;
+.left-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
 }
 
-.dnt-button {
-    padding: 12px 24px;
+.dnt-button,
+.save-button {
+    padding: 10px 16px;
     background-color: #000;
     color: #fff;
     border: none;
@@ -208,25 +230,27 @@ body {
     font-family: Arial, sans-serif;
     font-weight: bold;
     border-radius: 40px;
-    transition: background-color 0.2s, opacity 0.2s;
+    transition: background-color 0.2s;
     white-space: nowrap;
+    font-size: 14px;
+    flex-shrink: 1;
+    min-width: fit-content;
 }
 
-.dnt-button:hover {
+.dnt-button:hover,
+.save-button:hover {
     background-color: #333;
 }
 
-/* Кнопка музыки - уменьшенная иконка без текста */
 .music-toggle-button {
-    width: 38px;
-    height: 38px;
+    width: 34px;
+    height: 34px;
     padding: 0;
     background-color: #000;
     color: #fff;
     border: none;
     cursor: pointer;
     border-radius: 50%;
-    transition: background-color 0.2s, opacity 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -243,7 +267,6 @@ body {
     display: block;
 }
 
-/* Состояние выключенной музыки (показываем перечеркнутую иконку) */
 .music-toggle-button.muted .music-on-icon {
     display: none;
 }
@@ -260,173 +283,117 @@ body {
     display: none;
 }
 
-/* Правая кнопка сохранения */
-.save-button {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    padding: 12px 24px;
-    background-color: #000;
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    font-family: Arial, sans-serif;
-    font-weight: bold;
-    z-index: 100;
-    transition: background-color 0.2s, opacity 0.2s;
-    border-radius: 40px;
-}
-
-.save-button:hover {
-    background-color: #333;
-}
-
+/* Плавное появление */
 .fade-in {
     animation: fadeIn 0.5s ease forwards;
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        visibility: hidden;
-    }
-    to {
-        opacity: 1;
-        visibility: visible;
-    }
+    from { opacity: 0; visibility: hidden; }
+    to   { opacity: 1; visibility: visible; }
 }
 
-/* Адаптивность для мобильных устройств */
-@media (max-width: 600px) {
-    .grid-main {
-        --max-grid-size: min(90vw, 70vh);
-    }
-    
-    .button-group-left {
-        bottom: 16px;
-        left: 16px;
-        gap: 8px;
-    }
-    
-    .dnt-button {
-        padding: 10px 18px;
-        font-size: 14px;
-    }
-    
-    .music-toggle-button {
-        width: 34px;
-        height: 34px;
-    }
-    
-    .music-icon {
-        width: 14px;
-        height: 14px;
-    }
-    
-    .save-button {
-        bottom: 16px;
-        right: 16px;
-        padding: 10px 18px;
-        font-size: 14px;
-    }
-    
-    .loading-text {
-        font-size: 16px;
-    }
-    
-    .loading-spinner {
-        width: 40px;
-        height: 40px;
-    }
-    
-    .loading-progress {
-        width: 160px;
-    }
-}
-
-@media (max-height: 600px) {
-    .parent {
-        gap: 0;
-    }
-    .banner {
-        max-height: 10vh;
-    }
-    
-    .button-group-left {
-        bottom: 12px;
-        left: 12px;
-        gap: 8px;
-    }
-    
-    .dnt-button {
-        padding: 8px 16px;
-        font-size: 13px;
-    }
-    
-    .music-toggle-button {
-        width: 32px;
-        height: 32px;
-    }
-    
-    .save-button {
-        bottom: 12px;
-        right: 12px;
-        padding: 8px 16px;
-        font-size: 13px;
-    }
-}
-
-/* Очень маленькие экраны */
-@media (max-width: 480px) {
-    .dnt-button {
-        padding: 8px 14px;
-        font-size: 12px;
-    }
-    
-    .music-toggle-button {
-        width: 30px;
-        height: 30px;
-    }
-    
-    .music-icon {
-        width: 13px;
-        height: 13px;
-    }
-    
-    .save-button {
-        padding: 8px 14px;
-        font-size: 12px;
-    }
-}
-
-a[href="https://github.com/Marveee3"] {
+/* Ссылка GitHub */
+.github-link {
     position: fixed;
-    bottom: 2px;
-    left: 20px;
+    bottom: 5px;
+    left: 10px;
     text-decoration: none;
     z-index: 99;
 }
 
-a[href="https://github.com/Marveee3"] p {
+.github-link p {
     margin: 0;
     font-family: Arial, sans-serif;
-    font-size: 14px;
+    font-size: 12px;
     color: #000000;
     opacity: 0.35;
-    transition: opacity 0.2s ease;
 }
 
-a[href="https://github.com/Marveee3"]:hover p {
-    opacity: 0.7;
-}
-
+/* Адаптивность */
 @media (max-width: 600px) {
-    a[href="https://github.com/Marveee3"] {
-        bottom: 2px;
-        left: 20px;
+    .parent {
+        padding: 5px;
+        gap: 5px;
     }
-    a[href="https://github.com/Marveee3"] p {
-        font-size: 10px;
-        opacity: 0.4;
+    .banner {
+        max-height: 10vh;
+    }
+    .button-row {
+        flex-direction: column;
+        width: 100%;
+        gap: 8px;
+    }
+    .left-buttons {
+        width: 100%;
+        justify-content: center;
+    }
+    .dnt-button,
+    .save-button {
+        padding: 10px 14px;
+        font-size: 13px;
+        flex: 1;
+        min-width: 110px;
+    }
+    .save-button {
+        width: 100%;
+    }
+    .music-toggle-button {
+        width: 32px;
+        height: 32px;
+    }
+    .music-icon {
+        width: 15px;
+        height: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .parent {
+        padding: 4px;
+        gap: 4px;
+    }
+    .banner {
+        max-height: 8vh;
+    }
+    .button-row {
+        flex-direction: column;
+        gap: 6px;
+        padding: 4px;
+    }
+    .left-buttons {
+        width: 100%;
+        justify-content: center;
+        gap: 6px;
+    }
+    .dnt-button,
+    .save-button {
+        padding: 10px 12px;
+        font-size: 12px;
+        flex: 1;
+        min-width: 100px;
+    }
+    .save-button {
+        width: 100%;
+    }
+    .music-toggle-button {
+        width: 28px;
+        height: 28px;
+    }
+    .music-icon {
+        width: 13px;
+        height: 13px;
+    }
+}
+
+@media (max-height: 700px) {
+    .banner {
+        max-height: 8vh;
+    }
+    .parent {
+        gap: 5px;
+    }
+    .button-row {
+        gap: 6px;
     }
 }

@@ -2,13 +2,14 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, interactive-widget=resizes-visual">
     <title>Bingo - fiend4coffee</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Используем html-to-image (проверенная библиотека) -->
+    <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
 </head>
 <body>
-    <!-- Экран загрузки (только для изображений) -->
+    <!-- Экран загрузки -->
     <div id="loadingScreen" class="loading-screen">
         <div class="loading-container">
             <div class="loading-spinner"></div>
@@ -20,36 +21,37 @@
     </div>
 
     <div class="parent" id="captureArea" style="opacity: 0; visibility: hidden;">
-        <a href="https://t.me/davescottishh">
+        <a href="https://t.me/davescottishh" class="banner-link">
             <div class="banner-wrapper top-banner-wrapper">
                 <img src="img/topBanner.png" alt="Баннер" class="banner top-banner" data-load="banner-top">
             </div>
         </a>
         
-        <main class="grid-main" id="smartGrid">
-        </main>
+        <main class="grid-main" id="smartGrid"></main>
         
-        <a href="https://t.me/davescottishh">
+        <a href="https://t.me/davescottishh" class="banner-link">
             <div class="banner-wrapper bottom-banner-wrapper">
                 <img src="img/bottomBanner.png" alt="Баннер" class="banner bottom-banner" id="bottomBanner" data-load="banner-bottom">
             </div>
         </a>
+
+        <div class="button-row">
+            <div class="left-buttons">
+                <a href="https://pay.cloudtips.ru/p/01477e8a" class="dnt-button-link">
+                    <button class="dnt-button">Поддержать монеткой</button>
+                </a>
+                <button id="musicToggleBtn" class="music-toggle-button" title="Вкл/Выкл музыку">
+                    <svg class="music-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path class="music-on-icon" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                        <path class="music-off-icon" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z M4.5 4.5L19.5 19.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <button id="saveBtn" class="save-button">Сохранить как фото</button>
+        </div>
     </div>
 
-    <div class="button-group-left" style="opacity: 0; visibility: hidden;">
-        <a href="https://pay.cloudtips.ru/p/01477e8a" class="dnt-button-link">
-            <button class="dnt-button">Поддержать монеткой</button>
-        </a>
-        <button id="musicToggleBtn" class="music-toggle-button" title="Вкл/Выкл музыку">
-            <svg class="music-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path class="music-on-icon" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                <path class="music-off-icon" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z M4.5 4.5L19.5 19.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-        </button>
-    </div>
-
-    <button id="saveBtn" class="save-button" style="opacity: 0; visibility: hidden;">Сохранить как фото</button>
-    <a href="https://github.com/Marveee3"><p>by marveee</p></a>
+    <a href="https://github.com/Marveee3" class="github-link"><p>by marveee</p></a>
     
     <audio id="bgMusic" loop preload="auto">
         <source src="sound/bg.ogg" type="audio/ogg">

@@ -294,6 +294,7 @@
     // --- Сохранение с увеличенным шрифтом и отступами ---
     // --- Сохранение с увеличенным шрифтом и отступами ---
         // --- Сохранение с конвертацией баннеров в base64 ---
+        // --- Сохранение: надёжная загрузка баннеров + Share API (галерея) ---
     if (saveBtn) {
         const DomToImageLib = window.domtoimage;
         if (!DomToImageLib) {
@@ -303,6 +304,62 @@
         } else {
             saveBtn.disabled = false;
             saveBtn.title = '';
+
+            // Вспомогательная функция: загрузка изображения через fetch → Base64
+            async function fetchImageAsDataURL(url) {
+                const response = await fetch(url, { mode: 'cors' });
+                if (!response.ok) throw new Error(`Ошибка загрузки: ${url}`);
+                const blob = await response.blob();
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            }
+
+            // Сохранение через Share API (галерея) или скачивание
+            async function saveToGalleryOrDownload(dataUrl) {
+                // Пробуем Share API
+                if (navigator.share && navigator.canShare) {
+                    const blob = await (await fetch(dataUrl)).blob();
+                    const file = new File([blob], 'bingo.png', { type: 'image/png' });
+                    const shareData = { files: [file] };
+                    if (navigator.canShare(shareData)) {
+                        try {
+                            await navigator.share(shareData);
+                            return; // успешно отдали в галерею / другое приложение
+                        } catch (err) {
+                            // пользователь отменил – можно ничего не делать
+                            if (err.name !== 'AbortError') console.warn('Share error:', err);
+                            return;
+                        }
+                    }
+                }
+
+                // Fallback: обычное скачивание
+                const link = document.createElement('a');
+                link.download = `bingo_${Date.now()}.png`;
+                link.href = dataUrl;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // На iOS Safari после скачивания всё равно показываем подсказку,
+                // как сохранить в Фото (через «Файлы» → «Сохранить изображение»)
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                if (isIOS) {
+                    const hintModal = document.getElementById('galleryHintModal');
+                    if (hintModal) {
+                        hintModal.style.display = 'flex';
+                        hintModal.querySelector('.gallery-hint-close').onclick = () => {
+                            hintModal.style.display = 'none';
+                        };
+                    }
+                }
+            }
+
             saveBtn.onclick = async function() {
                 if (isSaving) return;
                 isSaving = true;
@@ -312,7 +369,7 @@
                 }
                 fitAllFontSizes();
 
-                // Показываем модальное окно сохранения
+                // Показываем модальное окно сохранения (спиннер)
                 let saveModal = document.getElementById('saveModal');
                 if (!saveModal) {
                     saveModal = document.createElement('div');
@@ -341,19 +398,21 @@
                         throw new Error('Не удалось найти элементы для сохранения');
                     }
 
-                    const banners = document.querySelectorAll('.banner');
-                    const allBannersOk = Array.from(banners).every(
-                        img => img.complete && img.naturalWidth > 0 && img.offsetHeight > 0
-                    );
-                    if (!allBannersOk) {
-                        throw new Error('Баннеры не загрузились или имеют нулевой размер.');
-                    }
+                    // 1. Загружаем баннеры в Base64 надёжным способом
+                    const topImg = topWrapper.querySelector('.banner');
+                    const bottomImg = bottomWrapper.querySelector('.banner');
+                    if (!topImg || !bottomImg) throw new Error('Баннеры не найдены');
 
+                    const [topDataUrl, bottomDataUrl] = await Promise.all([
+                        fetchImageAsDataURL(topImg.src),
+                        fetchImageAsDataURL(bottomImg.src)
+                    ]);
+
+                    // 2. Строим клон
                     const EXPORT_WIDTH = 1250;
                     const SIDE_PADDING = 25;
-                    const pixelRatio = Math.min(window.devicePixelRatio || 2, 2); // для мобильных качество
+                    const pixelRatio = Math.min(window.devicePixelRatio || 2, 2);
 
-                    // Клон за пределами экрана
                     cloneContainer = document.createElement('div');
                     cloneContainer.style.position = 'absolute';
                     cloneContainer.style.top = '0';
@@ -367,7 +426,9 @@
                     cloneContainer.style.flexDirection = 'column';
                     cloneContainer.style.alignItems = 'center';
 
+                    // Клонируем обёртки баннеров и подменяем src на Base64
                     const topClone = topWrapper.cloneNode(true);
+                    topClone.querySelector('.banner').src = topDataUrl;
                     topClone.style.width = '100%';
                     cloneContainer.appendChild(topClone);
 
@@ -377,23 +438,17 @@
                     cloneContainer.appendChild(gridClone);
 
                     const bottomClone = bottomWrapper.cloneNode(true);
+                    bottomClone.querySelector('.banner').src = bottomDataUrl;
                     bottomClone.style.width = '100%';
                     cloneContainer.appendChild(bottomClone);
 
-                    // Снимаем ограничения высоты баннеров
-                    cloneContainer.querySelectorAll('.banner').forEach(img => {
-                        img.style.maxHeight = 'none';
-                        img.style.height = 'auto';
-                        img.loading = 'eager';
-                    });
-
                     document.body.appendChild(cloneContainer);
 
-                    // Даём браузеру кадр
+                    // Ждём рендеринга
                     await new Promise(resolve => requestAnimationFrame(resolve));
                     await new Promise(resolve => requestAnimationFrame(resolve));
 
-                    // Увеличиваем лимит шрифта
+                    // Настраиваем шрифты с высоким пределом
                     MAX_FONT_SIZE = 2000;
                     const cloneEditables = cloneContainer.querySelectorAll('.cell-editable');
                     cloneEditables.forEach(el => {
@@ -403,62 +458,16 @@
                     await new Promise(r => setTimeout(r, 50));
                     cloneEditables.forEach(el => fitFontSizeForExport(el));
 
-                    // Ждём полной загрузки всех изображений в клоне
-                    const cloneImages = Array.from(cloneContainer.querySelectorAll('img'));
-                    await Promise.all(cloneImages.map(img => {
-                        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-                        return new Promise((resolve) => {
-                            const onDone = () => {
-                                img.removeEventListener('load', onDone);
-                                img.removeEventListener('error', onDone);
-                                resolve();
-                            };
-                            img.addEventListener('load', onDone);
-                            img.addEventListener('error', onDone);
-                            if (img.complete) onDone();
-                        });
-                    }));
-
-                    // Конвертируем все img в data URL для абсолютной надёжности
-                    const convertImgToDataURL = (img) => {
-                        return new Promise((resolve, reject) => {
-                            if (img.src.startsWith('data:')) {
-                                resolve(); // уже data URL
-                                return;
-                            }
-                            const canvas = document.createElement('canvas');
-                            canvas.width = img.naturalWidth;
-                            canvas.height = img.naturalHeight;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0);
-                            try {
-                                const dataUrl = canvas.toDataURL('image/png');
-                                img.src = dataUrl;
-                                resolve();
-                            } catch (err) {
-                                reject(new Error('Не удалось преобразовать изображение в data URL'));
-                            }
-                        });
-                    };
-
-                    await Promise.all(Array.from(cloneContainer.querySelectorAll('img')).map(convertImgToDataURL));
-
-                    // Ждём рендеринга с новыми src
-                    await new Promise(resolve => requestAnimationFrame(resolve));
-
+                    // 3. Генерируем PNG через dom-to-image
                     const dataUrl = await DomToImageLib.toPng(cloneContainer, {
                         quality: 1,
                         pixelRatio: pixelRatio,
                         backgroundColor: '#fff6ef',
-                        cacheBust: false,        // не перезагружаем, всё уже в data URL
+                        cacheBust: false,
                     });
 
-                    const link = document.createElement('a');
-                    link.download = `bingo_${Date.now()}.png`;
-                    link.href = dataUrl;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
+                    // 4. Сохраняем в галерею / файлы
+                    await saveToGalleryOrDownload(dataUrl);
 
                 } catch (error) {
                     console.error('Ошибка сохранения:', error);

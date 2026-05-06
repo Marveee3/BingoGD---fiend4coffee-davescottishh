@@ -204,44 +204,36 @@ body {
 .button-row {
     width: 100%;
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
     align-items: center;
-    flex-wrap: wrap;
-    flex-shrink: 0;
-    padding: 5px 0;          /* ← убрали горизонтальные отступы */
     gap: 8px;
+    padding: 5px 0;
+    flex-shrink: 0;
 }
 
-.left-buttons {
+/* Верхняя строка: донат, сброс, музыка */
+.buttons-top-row {
     display: flex;
+    flex-wrap: wrap;          /* перенос на мобильных */
+    justify-content: center;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+    width: 100%;
+}
+
+/* Ссылка-обёртка (донат) */
+.dnt-button-link {
+    text-decoration: none;
+    flex: 1 1 0;             /* на десктопе делят место поровну */
     min-width: 0;
 }
 
-.dnt-button,
-.save-button {
-    padding: 10px 16px;
-    background-color: #000;
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    font-family: Arial, sans-serif;
-    font-weight: bold;
-    border-radius: 40px;
-    transition: background-color 0.2s;
-    white-space: nowrap;
-    font-size: 14px;
-    flex-shrink: 1;
-    min-width: fit-content;
+/* Кнопка «Сбросить текст» (добавляется из JS) */
+#resetTextBtn {
+    flex: 1 1 0;             /* на десктопе равная доля */
 }
 
-.dnt-button:hover,
-.save-button:hover {
-    background-color: #333;
-}
-
+/* Круглая кнопка музыки */
 .music-toggle-button {
     width: 34px;
     height: 34px;
@@ -255,6 +247,36 @@ body {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+}
+
+/* Стили текстовых кнопок */
+.dnt-button,
+.save-button {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    background-color: #000;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+    border-radius: 40px;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+    font-size: 14px;
+    text-align: center;
+}
+
+/* Кнопка сохранения — на всю ширину */
+.save-button {
+    width: 100%;
+    flex: none;
+}
+
+.dnt-button:hover,
+.save-button:hover {
+    background-color: #333;
 }
 
 .music-toggle-button:hover {
@@ -310,7 +332,9 @@ body {
     opacity: 0.35;
 }
 
-/* Адаптивность */
+/* --- Адаптивность --- */
+
+/* Планшеты и небольшие экраны */
 @media (max-width: 600px) {
     .parent {
         padding: 5px;
@@ -320,39 +344,31 @@ body {
     }
     .button-row {
         flex-direction: column;
-        width: 100%;
-        gap: 8px;
-        padding: 5px 0;       /* ← убрали горизонтальные отступы */
+        align-items: stretch;
     }
-    .left-buttons {
+    .buttons-top-row {
         width: 100%;
-        display: flex;
-        justify-content: stretch;
-        gap: 8px;
     }
-    .dnt-button {
-        flex: 1;
-        min-width: 0;
-        padding: 10px 14px;
-        font-size: 13px;
+    /* донат занимает всё доступное место, музыка справа */
+    .dnt-button-link {
+        flex: 1 1 auto;
+    }
+    /* сброс уходит на новую строку и растягивается */
+    #resetTextBtn {
+        flex-basis: 100%;
+        width: 100%;
+        order: 1;            /* после первой строки с донатом и музыкой */
+    }
+    .music-toggle-button {
+        order: 0;            /* остаётся на первой строке */
+        align-self: center;
     }
     .save-button {
         width: 100%;
-        flex: none;
-        padding: 10px 14px;
-        font-size: 13px;
-    }
-    .music-toggle-button {
-        width: 34px;
-        height: 34px;
-        flex-shrink: 0;
-    }
-    .music-icon {
-        width: 16px;
-        height: 16px;
     }
 }
 
+/* Телефоны */
 @media (max-width: 480px) {
     .parent {
         padding: 4px;
@@ -361,39 +377,25 @@ body {
         max-height: 80vh;
     }
     .button-row {
-        flex-direction: column;
         gap: 6px;
-        padding: 4px 0;       /* ← убрали горизонтальные отступы */
+        padding: 4px 0;
     }
-    .left-buttons {
-        width: 100%;
-        display: flex;
-        justify-content: stretch;
-        gap: 6px;
-    }
-    .dnt-button {
-        flex: 1;
-        min-width: 0;
-        padding: 10px 12px;
-        font-size: 12px;
-    }
+    .dnt-button,
     .save-button {
-        width: 100%;
-        flex: none;
         padding: 10px 12px;
-        font-size: 12px;
+        font-size: 13px;
     }
     .music-toggle-button {
-        width: 28px;
-        height: 28px;
-        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
     }
     .music-icon {
-        width: 13px;
-        height: 13px;
+        width: 14px;
+        height: 14px;
     }
 }
 
+/* Очень низкие экраны */
 @media (max-height: 700px) {
     .banner {
         max-height: 80vh;
@@ -412,7 +414,7 @@ body {
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
-    display: none; /* будет показано через JS */
+    display: none;
     justify-content: center;
     align-items: center;
     z-index: 9999;
@@ -433,7 +435,6 @@ body {
     color: #000;
 }
 
-/* Спиннер в модальном окне */
 .save-modal-content .save-spinner {
     display: inline-block;
     width: 40px;
@@ -443,7 +444,8 @@ body {
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
-/* Модальное окно для Share API (iOS) */
+
+/* Подсказка для iOS (сохранение в Фото) */
 #galleryHintModal {
     position: fixed;
     top: 0;

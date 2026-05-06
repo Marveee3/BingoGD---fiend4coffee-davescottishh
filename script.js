@@ -3,7 +3,7 @@
     const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
     let MIN_FONT_SIZE = 6;
     let MAX_FONT_SIZE = 40;
-    let WRAP_THRESHOLD = 15;   // можно оставить const, если не меняется
+    let WRAP_THRESHOLD = 15;
 
     const container = document.getElementById('smartGrid');
     const saveBtn = document.getElementById('saveBtn');
@@ -292,6 +292,7 @@
 
 
     // --- Сохранение с увеличенным шрифтом и отступами ---
+    // --- Сохранение с увеличенным шрифтом и отступами ---
     if (saveBtn) {
         const DomToImageLib = window.domtoimage;
         if (!DomToImageLib) {
@@ -318,7 +319,8 @@
                 saveBtn.disabled = true;
 
                 let cloneContainer = null;
-                const originalMaxFontSize = MAX_FONT_SIZE;  // запоминаем экранный лимит (обычно 40)
+                let overlay = null;
+                const originalMaxFontSize = MAX_FONT_SIZE;
 
                 try {
                     const topWrapper = document.querySelector('.top-banner-wrapper');
@@ -338,15 +340,32 @@
                     }
 
                     // -- ПАРАМЕТРЫ ЭКСПОРТА --
-                    const EXPORT_WIDTH = 1250;   // общая ширина
-                    const SIDE_PADDING = 25;     // отступы слева/справа (фон по бокам)
-                    const pixelRatio = 1;        // 2 для сверхчёткости
+                    const EXPORT_WIDTH = 1250;
+                    const SIDE_PADDING = 25;
+                    const pixelRatio = 1;
                     // -----------------------
 
+                    // 1. Создаём оверлей, который скроет клон от глаз пользователя
+                    overlay = document.createElement('div');
+                    overlay.style.position = 'fixed';
+                    overlay.style.top = '0';
+                    overlay.style.left = '0';
+                    overlay.style.width = '100vw';
+                    overlay.style.height = '100vh';
+                    overlay.style.backgroundColor = '#fff6ef';
+                    overlay.style.zIndex = '999998';   // почти над всем
+                    overlay.style.display = 'flex';
+                    overlay.style.alignItems = 'center';
+                    overlay.style.justifyContent = 'center';
+                    overlay.innerHTML = '<div style="font-size:20px;">Создание изображения...</div>';
+                    document.body.appendChild(overlay);
+
+                    // 2. Клон размещаем в левом верхнем углу, но поверх оверлея (z-index больше)
                     cloneContainer = document.createElement('div');
                     cloneContainer.style.position = 'fixed';
-                    cloneContainer.style.left = '-9999px';
                     cloneContainer.style.top = '0';
+                    cloneContainer.style.left = '0';
+                    cloneContainer.style.zIndex = '999999';  // выше оверлея → будет отрендерен, но оверлей скроет
                     cloneContainer.style.backgroundColor = '#fff6ef';
                     cloneContainer.style.width = EXPORT_WIDTH + 'px';
                     cloneContainer.style.paddingLeft = SIDE_PADDING + 'px';
@@ -369,38 +388,31 @@
                     bottomClone.style.width = '100%';
                     cloneContainer.appendChild(bottomClone);
 
-                    // Убираем max-height у баннеров, чтобы они масштабировались свободно
+                    // Убираем max-height у баннеров
                     cloneContainer.querySelectorAll('.banner').forEach(img => {
                         img.style.maxHeight = 'none';
                         img.style.height = 'auto';
+                        img.loading = 'eager';   // гарантирует загрузку даже вне видимой области (на всякий случай)
                     });
 
                     document.body.appendChild(cloneContainer);
 
-                    // Ждём два кадра для полной отрисовки
+                    // Даём браузеру кадр, чтобы начать рендеринг
                     await new Promise(resolve => requestAnimationFrame(resolve));
                     await new Promise(resolve => requestAnimationFrame(resolve));
 
-                    // Временно поднимаем максимальный размер шрифта до гигантского
+                    // Временно поднимаем лимит шрифта
                     MAX_FONT_SIZE = 2000;
 
-                    // Принудительно фиксируем line-height у клонов
                     const cloneEditables = cloneContainer.querySelectorAll('.cell-editable');
                     cloneEditables.forEach(el => {
                         el.style.lineHeight = '1.1';
                     });
-
-                    // Применяем функцию подгонки для экспорта (без ограничения WRAP_THRESHOLD)
                     cloneEditables.forEach(el => fitFontSizeForExport(el));
-
-                    // Ещё раз после короткой паузы – чтобы точно применилось
                     await new Promise(r => setTimeout(r, 50));
                     cloneEditables.forEach(el => fitFontSizeForExport(el));
 
-                    // Возвращаем лимит для основного экрана
-                    MAX_FONT_SIZE = originalMaxFontSize;
-
-                    // Ждём загрузки всех картинок клона
+                    // Ждём полной загрузки всех изображений в клоне
                     const cloneImages = Array.from(cloneContainer.querySelectorAll('img'));
                     await Promise.all(cloneImages.map(img => {
                         if (img.complete && img.naturalWidth > 0) return Promise.resolve();
@@ -418,12 +430,13 @@
 
                     await new Promise(r => setTimeout(r, 200));
 
+                    // Проверяем, что баннеры имеют ненулевую высоту
                     const clonedBanners = cloneContainer.querySelectorAll('.banner');
-                    const anyZeroHeight = Array.from(clonedBanners).some(img => img.offsetHeight === 0);
-                    if (anyZeroHeight) {
+                    if (Array.from(clonedBanners).some(img => img.offsetHeight === 0)) {
                         throw new Error('Баннер в клоне имеет нулевую высоту.');
                     }
 
+                    // Теперь клон точно отрендерен, можно делать снимок
                     const dataUrl = await DomToImageLib.toPng(cloneContainer, {
                         quality: 1,
                         pixelRatio: pixelRatio,
@@ -442,10 +455,12 @@
                     console.error('Ошибка сохранения:', error);
                     alert('Не удалось сохранить: ' + error.message);
                 } finally {
-                    // Гарантированно восстанавливаем лимит
                     MAX_FONT_SIZE = originalMaxFontSize;
                     if (cloneContainer) {
                         document.body.removeChild(cloneContainer);
+                    }
+                    if (overlay) {
+                        document.body.removeChild(overlay);
                     }
                     saveBtn.innerHTML = originalHTML;
                     saveBtn.disabled = false;

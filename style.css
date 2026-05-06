@@ -314,7 +314,6 @@ body {
 @media (max-width: 600px) {
     .parent {
         padding: 5px;
-        gap: 5px;
     }
     .banner {
         max-height: 10vh;
@@ -357,10 +356,9 @@ body {
 @media (max-width: 480px) {
     .parent {
         padding: 4px;
-        gap: 4px;
     }
     .banner {
-        max-height: 8vh;
+        max-height: 80vh;
     }
     .button-row {
         flex-direction: column;

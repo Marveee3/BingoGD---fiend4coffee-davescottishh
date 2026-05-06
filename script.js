@@ -475,146 +475,129 @@
                 }
             }
 
-            saveBtn.onclick = async function () {
+            saveBtn.onclick = async () => {
                 if (isSaving) return;
                 isSaving = true;
 
-                if (document.activeElement && document.activeElement.blur) {
-                    document.activeElement.blur();
-                }
-
-                fitAllFontSizes();
-
-                let saveModal = document.getElementById('saveModal');
-                if (!saveModal) {
-                    saveModal = document.createElement('div');
-                    saveModal.id = 'saveModal';
-                    saveModal.innerHTML = `
-                        <div class="save-modal-content">
-                            <div class="save-spinner"></div>
-                            <p>Создаём изображение…</p>
-                        </div>
-                    `;
-                    document.body.appendChild(saveModal);
-                }
-
-                saveModal.style.display = 'flex';
-
-                const originalHTML = saveBtn.innerHTML;
-                saveBtn.innerHTML = 'Создание...';
-                saveBtn.disabled = true;
-
-                let cloneContainer = null;
-                const originalMaxFontSize = MAX_FONT_SIZE;
-
                 try {
-                    const topWrapper = document.querySelector('.top-banner-wrapper');
-                    const grid = document.getElementById('smartGrid');
-                    const bottomWrapper = document.querySelector('.bottom-banner-wrapper');
+                    fitAllFontSizes();
 
-                    if (!topWrapper || !grid || !bottomWrapper) {
+                    const topImg = document.querySelector('.top-banner');
+                    const bottomImg = document.querySelector('.bottom-banner');
+                    const grid = document.getElementById('smartGrid');
+
+                    if (!topImg || !bottomImg || !grid) {
                         throw new Error('Элементы не найдены');
                     }
 
-                    const topImg = topWrapper.querySelector('.banner');
-                    const bottomImg = bottomWrapper.querySelector('.banner');
+                    // --- загружаем изображения ЖЁСТКО ---
+                    async function loadImage(src) {
+                        return new Promise((resolve, reject) => {
+                            const img = new Image();
+                            img.crossOrigin = 'anonymous';
+                            img.src = src + '?t=' + Date.now();
 
-                    if (!topImg || !bottomImg) {
-                        throw new Error('Баннеры не найдены');
+                            img.onload = () => resolve(img);
+                            img.onerror = reject;
+                        });
                     }
 
-                    console.log('Force loading banners...');
+                    const topLoaded = await loadImage(topImg.src);
+                    const bottomLoaded = await loadImage(bottomImg.src);
 
-                    // 🔥 ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА
-                    const topLoaded = await forceLoadImage(topImg.src);
-                    const bottomLoaded = await forceLoadImage(bottomImg.src);
+                    // --- создаём canvas для сетки ---
+                    const GRID_SIZE = 5;
+                    const EXPORT_SIZE = 1000;
+                    const CELL_SIZE = EXPORT_SIZE / GRID_SIZE;
 
-                    const topCanvas = await imgToCanvasAsync(topLoaded);
-                    const bottomCanvas = await imgToCanvasAsync(bottomLoaded);
+                    const gridCanvas = document.createElement('canvas');
+                    gridCanvas.width = EXPORT_SIZE;
+                    gridCanvas.height = EXPORT_SIZE;
+                    const ctx = gridCanvas.getContext('2d');
 
-                    const EXPORT_WIDTH = 1250;
-                    const SIDE_PADDING = 25;
-                    const pixelRatio = Math.min(window.devicePixelRatio || 2, 2);
+                    // фон
+                    ctx.fillStyle = '#fff6ef';
+                    ctx.fillRect(0, 0, EXPORT_SIZE, EXPORT_SIZE);
 
-                    cloneContainer = document.createElement('div');
-                    cloneContainer.style.position = 'absolute';
-                    cloneContainer.style.top = '-9999px';
-                    cloneContainer.style.left = '-9999px';
-                    cloneContainer.style.width = EXPORT_WIDTH + 'px';
-                    cloneContainer.style.padding = `0 ${SIDE_PADDING}px`;
-                    cloneContainer.style.backgroundColor = '#fff6ef';
-                    cloneContainer.style.display = 'flex';
-                    cloneContainer.style.flexDirection = 'column';
-                    cloneContainer.style.alignItems = 'center';
+                    // клетки
+                    const cells = document.querySelectorAll('.cell-editable');
 
-                    // --- TOP ---
-                    const topClone = topWrapper.cloneNode(true);
-                    const topCloneImg = topClone.querySelector('.banner');
-                    topCloneImg.replaceWith(topCanvas);
+                    cells.forEach((cell, i) => {
+                        const row = Math.floor(i / GRID_SIZE);
+                        const col = i % GRID_SIZE;
 
-                    topCanvas.style.width = '100%';
-                    topCanvas.style.display = 'block';
+                        const x = col * CELL_SIZE;
+                        const y = row * CELL_SIZE;
 
-                    cloneContainer.appendChild(topClone);
+                        // фон клетки
+                        ctx.fillStyle = '#fff6ef';
+                        ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
 
-                    // --- GRID ---
-                    const gridClone = grid.cloneNode(true);
-                    gridClone.style.width = '100%';
-                    gridClone.style.aspectRatio = '1 / 1';
+                        // текст
+                        const text = cell.innerText.trim();
+                        if (text) {
+                            ctx.fillStyle = '#000';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
 
-                    cloneContainer.appendChild(gridClone);
+                            let fontSize = 40;
 
-                    // --- BOTTOM ---
-                    const bottomClone = bottomWrapper.cloneNode(true);
-                    const bottomCloneImg = bottomClone.querySelector('.banner');
-                    bottomCloneImg.replaceWith(bottomCanvas);
+                            // автоуменьшение
+                            do {
+                                ctx.font = `${fontSize}px Arial`;
+                                const metrics = ctx.measureText(text);
+                                if (metrics.width < CELL_SIZE - 10) break;
+                                fontSize -= 2;
+                            } while (fontSize > 10);
 
-                    bottomCanvas.style.width = '100%';
-                    bottomCanvas.style.display = 'block';
+                            ctx.fillText(
+                                text,
+                                x + CELL_SIZE / 2,
+                                y + CELL_SIZE / 2
+                            );
+                        }
 
-                    cloneContainer.appendChild(bottomClone);
-
-                    document.body.appendChild(cloneContainer);
-
-                    // 🔥 ВАЖНО ДЛЯ iOS
-                    await new Promise(r => requestAnimationFrame(r));
-                    await new Promise(r => setTimeout(r, 150));
-
-                    // --- ФОНТЫ ---
-                    MAX_FONT_SIZE = 2000;
-
-                    const cloneEditables = cloneContainer.querySelectorAll('.cell-editable');
-                    cloneEditables.forEach(el => {
-                        el.style.lineHeight = '1.1';
-                        fitFontSizeForExport(el);
+                        // граница
+                        ctx.strokeStyle = '#000';
+                        ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
                     });
 
-                    await new Promise(r => setTimeout(r, 50));
+                    // --- итоговый canvas ---
+                    const finalCanvas = document.createElement('canvas');
+                    const width = 1000;
+                    const PADDING = 25;
 
-                    const dataUrl = await domtoimage.toPng(cloneContainer, {
-                        quality: 1,
-                        pixelRatio: pixelRatio,
-                        backgroundColor: '#fff6ef',
-                        cacheBust: true // 🔥 критично
-                    });
+                    const topHeight = (topLoaded.height / topLoaded.width) * width;
+                    const bottomHeight = (bottomLoaded.height / bottomLoaded.width) * width;
 
-                    await saveToGalleryOrDownload(dataUrl);
 
-                } catch (error) {
-                    console.error(error);
-                    alert('Ошибка: ' + error.message);
-                } finally {
-                    MAX_FONT_SIZE = originalMaxFontSize;
+                    finalCanvas.width = width + PADDING * 2;
+                    finalCanvas.height = topHeight + EXPORT_SIZE + bottomHeight;
 
-                    if (cloneContainer) {
-                        document.body.removeChild(cloneContainer);
-                    }
+                    const fctx = finalCanvas.getContext('2d');
 
-                    saveModal.style.display = 'none';
-                    saveBtn.innerHTML = originalHTML;
-                    saveBtn.disabled = false;
-                    isSaving = false;
+                    // фон
+                    fctx.fillStyle = '#fff6ef';
+                    fctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+                    // рисуем
+                    fctx.drawImage(topLoaded, PADDING, 0, width, topHeight);
+                    fctx.drawImage(gridCanvas, PADDING, topHeight);
+                    fctx.drawImage(bottomLoaded, PADDING, topHeight + EXPORT_SIZE, width, bottomHeight);
+                    // --- сохраняем ---
+                    const dataUrl = finalCanvas.toDataURL('image/png');
+
+                    const link = document.createElement('a');
+                    link.href = dataUrl;
+                    link.download = 'bingo.png';
+                    link.click();
+
+                } catch (e) {
+                    console.error(e);
+                    alert('Ошибка сохранения');
                 }
+
+                isSaving = false;
             };
         }
     }

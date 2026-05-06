@@ -1,15 +1,14 @@
 (function () {
     const GRID_SIZE = 5;
     const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
-    const MIN_FONT_SIZE = 6;
-    const MAX_FONT_SIZE = 40;
-    const WRAP_THRESHOLD = 15;
+    let MIN_FONT_SIZE = 6;
+    let MAX_FONT_SIZE = 40;
+    let WRAP_THRESHOLD = 15;   // можно оставить const, если не меняется
 
     const container = document.getElementById('smartGrid');
     const saveBtn = document.getElementById('saveBtn');
     const captureArea = document.getElementById('captureArea');
     const loadingScreen = document.getElementById('loadingScreen');
-    const bottomBanner = document.getElementById('bottomBanner');
     
     const bgMusic = document.getElementById('bgMusic');
     const musicToggleBtn = document.getElementById('musicToggleBtn');
@@ -142,7 +141,7 @@
     }
     setTimeout(initMusic, 500);
 
-    // --- Подбор шрифта ---
+    // --- Подбор шрифта для экрана (с WRAP_THRESHOLD) ---
     function fitFontSize(el) {
         const text = el.innerText.trim();
         if (!text) {
@@ -190,6 +189,64 @@
         el.style.fontSize = best + 'px';
     }
 
+    // --- Подбор шрифта для экспорта (без ограничения WRAP_THRESHOLD) ---
+    function fitFontSizeForExport(el) {
+        const text = el.innerText.trim();
+        if (!text) {
+            el.style.fontSize = '1rem';
+            return;
+        }
+        const parent = el.parentElement;
+        if (!parent) return;
+        const limit = MAX_FONT_SIZE; // временно увеличен до 2000 во время экспорта
+
+        // Пробуем без переносов
+        el.style.whiteSpace = 'nowrap';
+        el.style.wordBreak = 'normal';
+        el.style.overflowWrap = 'normal';
+
+        let low = MIN_FONT_SIZE;
+        let high = limit;
+        let best = MIN_FONT_SIZE;
+
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            el.style.fontSize = mid + 'px';
+            if (el.scrollHeight <= parent.clientHeight + 1 && el.scrollWidth <= parent.clientWidth + 1) {
+                best = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+
+        el.style.fontSize = best + 'px';
+        if (el.scrollWidth <= parent.clientWidth + 1 && el.scrollHeight <= parent.clientHeight + 1) {
+            return; // Уместилось в одну строку
+        }
+
+        // Включаем перенос и ищем максимальный размер во всём диапазоне
+        el.style.whiteSpace = 'pre-wrap';
+        el.style.wordBreak = 'break-word';
+        el.style.overflowWrap = 'break-word';
+
+        low = MIN_FONT_SIZE;
+        high = limit;
+        best = MIN_FONT_SIZE;
+
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            el.style.fontSize = mid + 'px';
+            if (el.scrollHeight <= parent.clientHeight + 1) {
+                best = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        el.style.fontSize = best + 'px';
+    }
+
     function fitAllFontSizes() {
         document.querySelectorAll('.cell-editable').forEach(fitFontSize);
     }
@@ -217,11 +274,11 @@
 
     function adjustLayout() {
         const topBanner = document.querySelector('.top-banner');
-        const bottomBannerEl = document.getElementById('bottomBanner');
+        const bottomBanner = document.getElementById('bottomBanner');
         const buttonRow = document.querySelector('.button-row');
-        if (!topBanner || !bottomBannerEl || !buttonRow || !captureArea) return;
+        if (!topBanner || !bottomBanner || !buttonRow || !captureArea) return;
         const topHeight = topBanner.offsetHeight;
-        const bottomHeight = bottomBannerEl.offsetHeight;
+        const bottomHeight = bottomBanner.offsetHeight;
         const buttonHeight = buttonRow.offsetHeight;
         const totalNonGrid = topHeight + bottomHeight + buttonHeight;
         const viewportHeight = window.innerHeight;
@@ -233,121 +290,169 @@
         fitAllFontSizes();
     }
 
-    // --- Обрезка изображения по области между верхним и нижним баннерами, с шириной нижнего баннера ---
-    async function cropToBannersArea(fullCanvas, captureRect, topBannerRect, bottomBannerRect) {
-        // Определяем область обрезки в координатах captureArea (без масштаба)
-        const cropX = (captureRect.width - bottomBannerRect.width) / 2;   // центрируем по ширине нижнего баннера
-        const cropY = topBannerRect.top - captureRect.top;                // от верхнего края верхнего баннера
-        const cropWidth = bottomBannerRect.width;
-        const cropHeight = bottomBannerRect.bottom - topBannerRect.top;    // до нижнего края нижнего баннера
 
-        if (cropWidth <= 0 || cropHeight <= 0) {
-            throw new Error('Некорректные размеры обрезки: проверьте отображение баннеров');
-        }
-
-        // Масштабируем под размер canvas
-        const scaleX = fullCanvas.width / captureRect.width;
-        const scaleY = fullCanvas.height / captureRect.height;
-        // Используем единый масштаб (при рендеринге с pixelRatio=2 он одинаков по обеим осям)
-        const sx = cropX * scaleX;
-        const sy = cropY * scaleY;
-        const sw = cropWidth * scaleX;
-        const sh = cropHeight * scaleY;
-
-        // Защита от выходов за границы
-        const safeSx = Math.max(0, sx);
-        const safeSy = Math.max(0, sy);
-        const safeSw = Math.min(sw, fullCanvas.width - safeSx);
-        const safeSh = Math.min(sh, fullCanvas.height - safeSy);
-
-        if (safeSw <= 0 || safeSh <= 0) {
-            throw new Error('Обрезаемая область выходит за пределы изображения');
-        }
-
-        const croppedCanvas = document.createElement('canvas');
-        croppedCanvas.width = safeSw;
-        croppedCanvas.height = safeSh;
-        const ctx = croppedCanvas.getContext('2d');
-        ctx.drawImage(fullCanvas, safeSx, safeSy, safeSw, safeSh, 0, 0, safeSw, safeSh);
-        return croppedCanvas;
-    }
-
-    // --- Сохранение через html-to-image с обрезкой между баннерами ---
-    if (saveBtn && window.htmlToImage) {
-        saveBtn.onclick = async function() {
-            if (isSaving) return;
-            isSaving = true;
-            
-            if (document.activeElement && document.activeElement.blur) {
-                document.activeElement.blur();
-            }
-            fitAllFontSizes();
-            
-            const originalText = saveBtn.innerText;
-            saveBtn.innerText = "Создание...";
+    // --- Сохранение с увеличенным шрифтом и отступами ---
+    if (saveBtn) {
+        const DomToImageLib = window.domtoimage;
+        if (!DomToImageLib) {
+            console.warn('Библиотека dom-to-image-more не загружена.');
             saveBtn.disabled = true;
-            saveBtn.style.opacity = '0';
-            
-            try {
-                // Получаем элементы баннеров для обрезки
-                const topBanner = document.querySelector('.top-banner');
-                const bottomBannerEl = document.getElementById('bottomBanner');
-                if (!topBanner || !bottomBannerEl) {
-                    throw new Error('Верхний или нижний баннер не найден');
-                }
+            saveBtn.title = 'Библиотека не загружена';
+        } else {
+            saveBtn.disabled = false;
+            saveBtn.title = '';
+            saveBtn.onclick = async function() {
+                if (isSaving) return;
+                isSaving = true;
 
-                // Сначала рендерим всю captureArea
-                const dataUrl = await window.htmlToImage.toPng(captureArea, {
-                    quality: 1,
-                    pixelRatio: 2,
-                    backgroundColor: '#fff6ef',
-                    cacheBust: true,
-                });
-                
-                // Загружаем в Image, чтобы получить canvas
-                const img = new Image();
-                img.src = dataUrl;
-                await new Promise((resolve, reject) => {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                });
-                
-                const fullCanvas = document.createElement('canvas');
-                fullCanvas.width = img.width;
-                fullCanvas.height = img.height;
-                const ctx = fullCanvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                
-                // Получаем актуальные позиции элементов
-                const captureRect = captureArea.getBoundingClientRect();
-                const topRect = topBanner.getBoundingClientRect();
-                const bottomRect = bottomBannerEl.getBoundingClientRect();
-                
-                // Обрезаем по нужной области
-                const finalCanvas = await cropToBannersArea(fullCanvas, captureRect, topRect, bottomRect);
-                
-                // Скачиваем
-                const link = document.createElement('a');
-                link.download = `bingo_${Date.now()}.png`;
-                link.href = finalCanvas.toDataURL('image/png');
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-            } catch (error) {
-                console.error('Ошибка сохранения:', error);
-                alert('Не удалось сохранить изображение: ' + error.message);
-            } finally {
-                saveBtn.innerText = originalText;
-                saveBtn.disabled = false;
-                saveBtn.style.opacity = '1';
-                isSaving = false;
-            }
-        };
-    } else if (saveBtn) {
-        console.warn('Библиотека html-to-image не загружена');
-        saveBtn.disabled = true;
-        saveBtn.title = 'Библиотека не загружена';
+                if (document.activeElement && document.activeElement.blur) {
+                    document.activeElement.blur();
+                }
+                fitAllFontSizes();
+
+                const originalHTML = saveBtn.innerHTML;
+                saveBtn.innerHTML = `
+                    <span class="save-spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top:2px solid transparent;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;"></span>
+                    Создание...
+                `;
+                saveBtn.disabled = true;
+
+                let cloneContainer = null;
+                const originalMaxFontSize = MAX_FONT_SIZE;  // запоминаем экранный лимит (обычно 40)
+
+                try {
+                    const topWrapper = document.querySelector('.top-banner-wrapper');
+                    const grid = document.getElementById('smartGrid');
+                    const bottomWrapper = document.querySelector('.bottom-banner-wrapper');
+
+                    if (!topWrapper || !grid || !bottomWrapper) {
+                        throw new Error('Не удалось найти элементы для сохранения');
+                    }
+
+                    const banners = document.querySelectorAll('.banner');
+                    const allBannersOk = Array.from(banners).every(
+                        img => img.complete && img.naturalWidth > 0 && img.offsetHeight > 0
+                    );
+                    if (!allBannersOk) {
+                        throw new Error('Баннеры не загрузились или имеют нулевой размер.');
+                    }
+
+                    // -- ПАРАМЕТРЫ ЭКСПОРТА --
+                    const EXPORT_WIDTH = 1250;   // общая ширина
+                    const SIDE_PADDING = 25;     // отступы слева/справа (фон по бокам)
+                    const pixelRatio = 1;        // 2 для сверхчёткости
+                    // -----------------------
+
+                    cloneContainer = document.createElement('div');
+                    cloneContainer.style.position = 'fixed';
+                    cloneContainer.style.left = '-9999px';
+                    cloneContainer.style.top = '0';
+                    cloneContainer.style.backgroundColor = '#fff6ef';
+                    cloneContainer.style.width = EXPORT_WIDTH + 'px';
+                    cloneContainer.style.paddingLeft = SIDE_PADDING + 'px';
+                    cloneContainer.style.paddingRight = SIDE_PADDING + 'px';
+                    cloneContainer.style.boxSizing = 'border-box';
+                    cloneContainer.style.display = 'flex';
+                    cloneContainer.style.flexDirection = 'column';
+                    cloneContainer.style.alignItems = 'center';
+
+                    const topClone = topWrapper.cloneNode(true);
+                    topClone.style.width = '100%';
+                    cloneContainer.appendChild(topClone);
+
+                    const gridClone = grid.cloneNode(true);
+                    gridClone.style.width = '100%';
+                    gridClone.style.aspectRatio = '1 / 1';
+                    cloneContainer.appendChild(gridClone);
+
+                    const bottomClone = bottomWrapper.cloneNode(true);
+                    bottomClone.style.width = '100%';
+                    cloneContainer.appendChild(bottomClone);
+
+                    // Убираем max-height у баннеров, чтобы они масштабировались свободно
+                    cloneContainer.querySelectorAll('.banner').forEach(img => {
+                        img.style.maxHeight = 'none';
+                        img.style.height = 'auto';
+                    });
+
+                    document.body.appendChild(cloneContainer);
+
+                    // Ждём два кадра для полной отрисовки
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+
+                    // Временно поднимаем максимальный размер шрифта до гигантского
+                    MAX_FONT_SIZE = 2000;
+
+                    // Принудительно фиксируем line-height у клонов
+                    const cloneEditables = cloneContainer.querySelectorAll('.cell-editable');
+                    cloneEditables.forEach(el => {
+                        el.style.lineHeight = '1.1';
+                    });
+
+                    // Применяем функцию подгонки для экспорта (без ограничения WRAP_THRESHOLD)
+                    cloneEditables.forEach(el => fitFontSizeForExport(el));
+
+                    // Ещё раз после короткой паузы – чтобы точно применилось
+                    await new Promise(r => setTimeout(r, 50));
+                    cloneEditables.forEach(el => fitFontSizeForExport(el));
+
+                    // Возвращаем лимит для основного экрана
+                    MAX_FONT_SIZE = originalMaxFontSize;
+
+                    // Ждём загрузки всех картинок клона
+                    const cloneImages = Array.from(cloneContainer.querySelectorAll('img'));
+                    await Promise.all(cloneImages.map(img => {
+                        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                        return new Promise((resolve) => {
+                            const onDone = () => {
+                                img.removeEventListener('load', onDone);
+                                img.removeEventListener('error', onDone);
+                                resolve();
+                            };
+                            img.addEventListener('load', onDone);
+                            img.addEventListener('error', onDone);
+                            if (img.complete) onDone();
+                        });
+                    }));
+
+                    await new Promise(r => setTimeout(r, 200));
+
+                    const clonedBanners = cloneContainer.querySelectorAll('.banner');
+                    const anyZeroHeight = Array.from(clonedBanners).some(img => img.offsetHeight === 0);
+                    if (anyZeroHeight) {
+                        throw new Error('Баннер в клоне имеет нулевую высоту.');
+                    }
+
+                    const dataUrl = await DomToImageLib.toPng(cloneContainer, {
+                        quality: 1,
+                        pixelRatio: pixelRatio,
+                        backgroundColor: '#fff6ef',
+                        cacheBust: true,
+                    });
+
+                    const link = document.createElement('a');
+                    link.download = `bingo_${Date.now()}.png`;
+                    link.href = dataUrl;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                } catch (error) {
+                    console.error('Ошибка сохранения:', error);
+                    alert('Не удалось сохранить: ' + error.message);
+                } finally {
+                    // Гарантированно восстанавливаем лимит
+                    MAX_FONT_SIZE = originalMaxFontSize;
+                    if (cloneContainer) {
+                        document.body.removeChild(cloneContainer);
+                    }
+                    saveBtn.innerHTML = originalHTML;
+                    saveBtn.disabled = false;
+                    isSaving = false;
+                }
+            };
+        }
     }
 
     window.addEventListener('load', () => {

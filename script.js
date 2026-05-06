@@ -480,6 +480,17 @@
 
                     document.body.appendChild(cloneContainer);
 
+                    // Ждём загрузки всех изображений в клоне (особенно data: URL)
+                    const imgs = cloneContainer.querySelectorAll('img');
+                    await Promise.all(Array.from(imgs).map(img => {
+                        if (img.complete) return Promise.resolve();
+                        return new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = () => reject(new Error('Ошибка загрузки изображения в клоне'));
+                        });
+                    }));
+
+                    // Дополнительная подстраховка, чтобы браузер отрисовал всё
                     await new Promise(r => requestAnimationFrame(r));
                     await new Promise(r => requestAnimationFrame(r));
 

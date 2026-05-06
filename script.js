@@ -421,185 +421,234 @@
     }
 
     // --- Сохранение с надёжным преобразованием баннеров в canvas (исправлено для iOS) ---
+        // === УЛУЧШЕННАЯ СИСТЕМА СОХРАНЕНИЯ (особенно для iOS) ===
     if (saveBtn) {
         const DomToImageLib = window.domtoimage;
         if (!DomToImageLib) {
             console.warn('Библиотека dom-to-image-more не загружена.');
             saveBtn.disabled = true;
-            saveBtn.title = 'Библиотека не загружена';
-        } else {
-            saveBtn.disabled = false;
-            saveBtn.title = '';
+            return;
+        }
 
-            function showIOSGalleryHint() {
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                if (isIOS) {
-                    const hintModal = document.getElementById('galleryHintModal');
-                    if (hintModal) {
-                        hintModal.style.display = 'flex';
-                        hintModal.querySelector('.gallery-hint-close').onclick = () => {
-                            hintModal.style.display = 'none';
+        saveBtn.disabled = false;
+
+        function showIOSGalleryHint() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && 'ontouchend' in document);
+            if (isIOS) {
+                const hintModal = document.getElementById('galleryHintModal');
+                if (hintModal) hintModal.style.display = 'flex';
+            }
+        }
+
+        // Надёжная загрузка изображения с несколькими попытками
+        async function forceLoadImage(src, attempts = 3) {
+            for (let i = 0; i < attempts; i++) {
+                try {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+
+                    // Принудительный bypass кэша
+                    const cacheBustedSrc = src.includes('?') 
+                        ? src + '&t=' + Date.now() 
+                        : src + '?t=' + Date.now();
+
+                    await new Promise((resolve, reject) => {
+                        img.onload = () => resolve(img);
+                        img.onerror = () => {
+                            if (i === attempts - 1) reject(new Error(`Не удалось загрузить ${src}`));
+                            else resolve(null); // попробуем ещё раз
                         };
+                        img.src = cacheBustedSrc;
+                    });
+
+                    if (!img) continue;
+
+                    // Принудительное декодирование
+                    if (img.decode) {
+                        try { await img.decode(); } catch (e) {}
                     }
+
+                    return img;
+                } catch (e) {
+                    if (i === attempts - 1) throw e;
+                    await new Promise(r => setTimeout(r, 100));
                 }
             }
+        }
 
-            async function saveToGalleryOrDownload(dataUrl) {
+        // Надёжное превращение img → canvas
+        async function imgToCanvas(img) {
+            if (!img || !img.naturalWidth) throw new Error('Изображение не загружено');
+
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+
+            const ctx = canvas.getContext('2d', { alpha: true });
+            
+            // Несколько попыток отрисовки
+            for (let i = 0; i < 3; i++) {
+                ctx.drawImage(img, 0, 0);
+                
+                // Проверка, что канвас не пустой
+                const data = ctx.getImageData(
+                    Math.floor(canvas.width / 2), 
+                    Math.floor(canvas.height / 2), 
+                    1, 1
+                ).data;
+                
+                if (data[3] !== 0) return canvas; // успешно
+
+                await new Promise(r => setTimeout(r, 50));
+            }
+
+            console.warn('Canvas всё ещё пустой после попыток');
+            return canvas;
+        }
+
+        saveBtn.onclick = async function () {
+            if (isSaving) return;
+            isSaving = true;
+
+            const originalHTML = saveBtn.innerHTML;
+            saveBtn.innerHTML = 'Создание...';
+            saveBtn.disabled = true;
+
+            let cloneContainer = null;
+            let saveModal = null;
+
+            try {
+                // Подготовка
+                if (document.activeElement?.blur) document.activeElement.blur();
+                fitAllFontSizes();
+
+                // Создаём модальное окно
+                saveModal = document.createElement('div');
+                saveModal.id = 'saveModal';
+                saveModal.innerHTML = `
+                    <div class="save-modal-content">
+                        <div class="save-spinner"></div>
+                        <p>Создаём изображение...</p>
+                    </div>
+                `;
+                document.body.appendChild(saveModal);
+                saveModal.style.display = 'flex';
+
+                const topImg = document.querySelector('.top-banner');
+                const bottomImg = document.querySelector('.bottom-banner');
+
+                // === ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА БАННЕРОВ ===
+                console.log('Force loading banners for iOS...');
+                const [topLoaded, bottomLoaded] = await Promise.all([
+                    forceLoadImage(topImg.src),
+                    forceLoadImage(bottomImg.src)
+                ]);
+
+                const topCanvas = await imgToCanvas(topLoaded);
+                const bottomCanvas = await imgToCanvas(bottomLoaded);
+
+                // === СОЗДАНИЕ КЛОНА ДЛЯ ЭКСПОРТА ===
+                const EXPORT_WIDTH = 1250;
+                const SIDE_PADDING = 25;
+                const pixelRatio = Math.min(window.devicePixelRatio || 2, 2.5);
+
+                cloneContainer = document.createElement('div');
+                Object.assign(cloneContainer.style, {
+                    position: 'absolute',
+                    top: '-99999px',
+                    left: '-99999px',
+                    width: EXPORT_WIDTH + 'px',
+                    padding: `0 ${SIDE_PADDING}px`,
+                    backgroundColor: '#fff6ef',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    fontFamily: 'Arial, sans-serif'
+                });
+
+                // Top banner
+                const topClone = document.querySelector('.top-banner-wrapper').cloneNode(true);
+                const topCloneImg = topClone.querySelector('img');
+                topCloneImg.replaceWith(topCanvas);
+                topCanvas.style.width = '100%';
+                topCanvas.style.display = 'block';
+                cloneContainer.appendChild(topClone);
+
+                // Grid
+                const gridClone = document.getElementById('smartGrid').cloneNode(true);
+                gridClone.style.width = '100%';
+                gridClone.style.aspectRatio = '1 / 1';
+                cloneContainer.appendChild(gridClone);
+
+                // Bottom banner
+                const bottomClone = document.querySelector('.bottom-banner-wrapper').cloneNode(true);
+                const bottomCloneImg = bottomClone.querySelector('img');
+                bottomCloneImg.replaceWith(bottomCanvas);
+                bottomCanvas.style.width = '100%';
+                bottomCanvas.style.display = 'block';
+                cloneContainer.appendChild(bottomClone);
+
+                document.body.appendChild(cloneContainer);
+
+                // Даём браузеру время на рендер (критично для iOS)
+                await new Promise(r => requestAnimationFrame(r));
+                await new Promise(r => setTimeout(r, 200));
+
+                // Увеличиваем размер шрифта для экспорта
+                const originalMax = MAX_FONT_SIZE;
+                MAX_FONT_SIZE = 2000;
+
+                cloneContainer.querySelectorAll('.cell-editable').forEach(el => {
+                    el.style.lineHeight = '1.15';
+                    fitFontSizeForExport(el);
+                });
+
+                await new Promise(r => setTimeout(r, 80));
+
+                // === ФИНАЛЬНЫЙ ЭКСПОРТ ===
+                const dataUrl = await DomToImageLib.toPng(cloneContainer, {
+                    quality: 1,
+                    pixelRatio: pixelRatio,
+                    backgroundColor: '#fff6ef',
+                    cacheBust: true,
+                    filter: (node) => node.tagName !== 'A' // убираем ссылки
+                });
+
+                // Сохранение
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    (navigator.platform === 'MacIntel' && 'ontouchend' in document);
 
-                if (isIOS && navigator.share && navigator.canShare) {
+                if (isIOS && navigator.share) {
                     try {
-                        const blob = await (await fetch(dataUrl)).blob();
-                        const file = new File([blob], 'bingo.png', { type: 'image/png' });
-                        const shareData = { files: [file] };
-                        if (navigator.canShare(shareData)) {
-                            await navigator.share(shareData);
-                            return;
-                        }
-                    } catch (err) {
-                        if (err.name !== 'AbortError') console.warn('Share error:', err);
+                        const blob = await fetch(dataUrl).then(r => r.blob());
+                        const file = new File([blob], `bingo_${Date.now()}.png`, { type: 'image/png' });
+                        await navigator.share({ files: [file] });
+                        return;
+                    } catch (e) {
+                        console.log('Share не сработал, используем download');
                     }
                 }
 
                 const link = document.createElement('a');
                 link.download = `bingo_${Date.now()}.png`;
                 link.href = dataUrl;
-                document.body.appendChild(link);
                 link.click();
-                document.body.removeChild(link);
 
-                if (isIOS) {
-                    showIOSGalleryHint();
-                }
-            }
+                if (isIOS) showIOSGalleryHint();
 
-            saveBtn.onclick = async () => {
-                if (isSaving) return;
-                isSaving = true;
-
-                try {
-                    fitAllFontSizes();
-
-                    const topImg = document.querySelector('.top-banner');
-                    const bottomImg = document.querySelector('.bottom-banner');
-                    const grid = document.getElementById('smartGrid');
-
-                    if (!topImg || !bottomImg || !grid) {
-                        throw new Error('Элементы не найдены');
-                    }
-
-                    // --- загружаем изображения ЖЁСТКО ---
-                    async function loadImage(src) {
-                        return new Promise((resolve, reject) => {
-                            const img = new Image();
-                            img.crossOrigin = 'anonymous';
-                            img.src = src + '?t=' + Date.now();
-
-                            img.onload = () => resolve(img);
-                            img.onerror = reject;
-                        });
-                    }
-
-                    const topLoaded = await loadImage(topImg.src);
-                    const bottomLoaded = await loadImage(bottomImg.src);
-
-                    // --- создаём canvas для сетки ---
-                    const GRID_SIZE = 5;
-                    const EXPORT_SIZE = 1000;
-                    const CELL_SIZE = EXPORT_SIZE / GRID_SIZE;
-
-                    const gridCanvas = document.createElement('canvas');
-                    gridCanvas.width = EXPORT_SIZE;
-                    gridCanvas.height = EXPORT_SIZE;
-                    const ctx = gridCanvas.getContext('2d');
-
-                    // фон
-                    ctx.fillStyle = '#fff6ef';
-                    ctx.fillRect(0, 0, EXPORT_SIZE, EXPORT_SIZE);
-
-                    // клетки
-                    const cells = document.querySelectorAll('.cell-editable');
-
-                    cells.forEach((cell, i) => {
-                        const row = Math.floor(i / GRID_SIZE);
-                        const col = i % GRID_SIZE;
-
-                        const x = col * CELL_SIZE;
-                        const y = row * CELL_SIZE;
-
-                        // фон клетки
-                        ctx.fillStyle = '#fff6ef';
-                        ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
-
-                        // текст
-                        const text = cell.innerText.trim();
-                        if (text) {
-                            ctx.fillStyle = '#000';
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-
-                            let fontSize = 40;
-
-                            // автоуменьшение
-                            do {
-                                ctx.font = `${fontSize}px Arial`;
-                                const metrics = ctx.measureText(text);
-                                if (metrics.width < CELL_SIZE - 10) break;
-                                fontSize -= 2;
-                            } while (fontSize > 10);
-
-                            ctx.fillText(
-                                text,
-                                x + CELL_SIZE / 2,
-                                y + CELL_SIZE / 2
-                            );
-                        }
-
-                        // граница
-                        ctx.strokeStyle = '#000';
-                        ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
-                    });
-
-                    // --- итоговый canvas ---
-                    const finalCanvas = document.createElement('canvas');
-                    const width = 1000;
-                    const PADDING = 25;
-
-                    const topHeight = (topLoaded.height / topLoaded.width) * width;
-                    const bottomHeight = (bottomLoaded.height / bottomLoaded.width) * width;
-
-
-                    finalCanvas.width = width + PADDING * 2;
-                    finalCanvas.height = topHeight + EXPORT_SIZE + bottomHeight;
-
-                    const fctx = finalCanvas.getContext('2d');
-
-                    // фон
-                    fctx.fillStyle = '#fff6ef';
-                    fctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-
-                    // рисуем
-                    fctx.drawImage(topLoaded, PADDING, 0, width, topHeight);
-                    fctx.drawImage(gridCanvas, PADDING, topHeight);
-                    fctx.drawImage(bottomLoaded, PADDING, topHeight + EXPORT_SIZE, width, bottomHeight);
-                    // --- сохраняем ---
-                    const dataUrl = finalCanvas.toDataURL('image/png');
-
-                    const link = document.createElement('a');
-                    link.href = dataUrl;
-                    link.download = 'bingo.png';
-                    link.click();
-
-                } catch (e) {
-                    console.error(e);
-                    alert('Ошибка сохранения');
-                }
-
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Ошибка сохранения: ' + error.message + '\n\nПопробуйте ещё раз.');
+            } finally {
+                MAX_FONT_SIZE = 40; // возвращаем обратно
+                if (cloneContainer) cloneContainer.remove();
+                if (saveModal) saveModal.remove();
+                saveBtn.innerHTML = originalHTML;
+                saveBtn.disabled = false;
                 isSaving = false;
-            };
-        }
+            }
+        };
     }
 
     // --- Кнопка «Сбросить текст» ---

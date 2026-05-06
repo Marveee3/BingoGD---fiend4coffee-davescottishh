@@ -7,6 +7,7 @@
 
     const container = document.getElementById('smartGrid');
     const saveBtn = document.getElementById('saveBtn');
+    const iosSaveBtn = document.getElementById('iosSaveBtn');
     const captureArea = document.getElementById('captureArea');
     const loadingScreen = document.getElementById('loadingScreen');
     
@@ -325,121 +326,180 @@
         fitAllFontSizes();
     }
 
-    // === НОВЫЙ МЕТОД ДЛЯ iOS SAFARI ===
-    async function saveAsScreenshotIOS() {
-        const originalOpacity = captureArea.style.opacity;
-        const originalVisibility = captureArea.style.visibility;
+    async function forceLoadImage(src, attempts = 3) {
+        for (let i = 0; i < attempts; i++) {
+            try {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                const cacheBustedSrc = src.includes('?') 
+                    ? src + '&t=' + Date.now() 
+                    : src + '?t=' + Date.now();
+
+                await new Promise((resolve, reject) => {
+                    img.onload = () => resolve(img);
+                    img.onerror = () => {
+                        if (i === attempts - 1) reject(new Error(`Не удалось загрузить ${src}`));
+                        else resolve(null);
+                    };
+                    img.src = cacheBustedSrc;
+                });
+
+                if (!img) continue;
+                if (img.decode) {
+                    try { await img.decode(); } catch (e) {}
+                }
+                return img;
+            } catch (e) {
+                if (i === attempts - 1) throw e;
+                await new Promise(r => setTimeout(r, 100));
+            }
+        }
+    }
+
+    async function imgToCanvas(img) {
+        if (!img || !img.naturalWidth) throw new Error('Изображение не загружено');
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d', { alpha: true });
+        for (let i = 0; i < 3; i++) {
+            ctx.drawImage(img, 0, 0);
+            const data = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+            if (data[3] !== 0) return canvas;
+            await new Promise(r => setTimeout(r, 50));
+        }
+        return canvas;
+    }
+
+    // --- НОВЫЙ МЕТОД ДЛЯ IOS (СКРИНШОТ) ---
+    async function createIosScreenshot() {
+        if (isSaving) return;
+        isSaving = true;
+
+        const iosSaveBtn = document.getElementById('iosSaveBtn');
+        const originalHTML = iosSaveBtn.innerHTML;
+        iosSaveBtn.innerHTML = 'Создание...';
+        iosSaveBtn.disabled = true;
+
+        let cloneContainer = null;
+        let saveModal = null;
 
         try {
-            document.querySelectorAll('.github-link, #saveModal').forEach(el => {
-                if (el) el.style.display = 'none';
+            if (document.activeElement?.blur) document.activeElement.blur();
+            fitAllFontSizes();
+
+            saveModal = document.createElement('div');
+            saveModal.id = 'saveModal';
+            saveModal.innerHTML = `
+                <div class="save-modal-content">
+                    <div class="save-spinner"></div>
+                    <p>Подготовка скриншота...</p>
+                </div>
+            `;
+            document.body.appendChild(saveModal);
+            saveModal.style.display = 'flex';
+
+            const topImg = document.querySelector('.top-banner');
+            const bottomImg = document.querySelector('.bottom-banner');
+
+            const [topLoaded, bottomLoaded] = await Promise.all([
+                forceLoadImage(topImg.src),
+                forceLoadImage(bottomImg.src)
+            ]);
+
+            const topCanvas = await imgToCanvas(topLoaded);
+            const bottomCanvas = await imgToCanvas(bottomLoaded);
+
+            const EXPORT_WIDTH = 1250;
+            const SIDE_PADDING = 25;
+
+            cloneContainer = document.createElement('div');
+            Object.assign(cloneContainer.style, {
+                position: 'absolute',
+                top: '-99999px',
+                left: '-99999px',
+                width: EXPORT_WIDTH + 'px',
+                padding: `0 ${SIDE_PADDING}px`,
+                backgroundColor: '#fff6ef',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                fontFamily: 'Arial, sans-serif'
             });
 
-            captureArea.style.opacity = '1';
-            captureArea.style.visibility = 'visible';
+            const topClone = document.querySelector('.top-banner-wrapper').cloneNode(true);
+            const topCloneImg = topClone.querySelector('img');
+            topCloneImg.replaceWith(topCanvas);
+            topCanvas.style.width = '100%';
+            topCanvas.style.display = 'block';
+            cloneContainer.appendChild(topClone);
 
-            await new Promise(r => setTimeout(r, 150));
+            const gridClone = document.getElementById('smartGrid').cloneNode(true);
+            gridClone.style.width = '100%';
+            gridClone.style.aspectRatio = '1 / 1';
+            cloneContainer.appendChild(gridClone);
 
-            const canvas = await domtoimage.toCanvas(captureArea, {
-                quality: 1,
-                pixelRatio: Math.min(window.devicePixelRatio || 2, 3),
-                bgcolor: '#fff6ef'
+            const bottomClone = document.querySelector('.bottom-banner-wrapper').cloneNode(true);
+            const bottomCloneImg = bottomClone.querySelector('img');
+            bottomCloneImg.replaceWith(bottomCanvas);
+            bottomCanvas.style.width = '100%';
+            bottomCanvas.style.display = 'block';
+            cloneContainer.appendChild(bottomClone);
+
+            document.body.appendChild(cloneContainer);
+
+            await new Promise(r => requestAnimationFrame(r));
+            await new Promise(r => setTimeout(r, 200));
+
+            const originalMax = MAX_FONT_SIZE;
+            MAX_FONT_SIZE = 2000;
+
+            cloneContainer.querySelectorAll('.cell-editable').forEach(el => {
+                el.style.lineHeight = '1.15';
+                fitFontSizeForExport(el);
             });
 
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 1));
-            const file = new File([blob], `bingo_${Date.now()}.png`, { type: 'image/png' });
+            await new Promise(r => setTimeout(r, 100));
 
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title: 'Bingo',
-                });
-                return true;
-            } else {
-                const link = document.createElement('a');
-                link.download = `bingo_${Date.now()}.png`;
-                link.href = canvas.toDataURL('image/png', 1);
-                link.click();
-                showIOSGalleryHint();
-                return true;
-            }
-        } catch (e) {
-            console.error('iOS screenshot error:', e);
-            alert('Не удалось сохранить автоматически.\n\nПросто сделайте скриншот экрана (громкость + кнопка питания).');
-            return false;
+            const canvas = await html2canvas(cloneContainer, {
+                backgroundColor: '#fff6ef',
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                width: EXPORT_WIDTH + (SIDE_PADDING * 2)
+            });
+
+            const dataUrl = canvas.toDataURL('image/png');
+            
+            const screenshotModal = document.getElementById('iosScreenshotModal');
+            const screenshotContainer = document.getElementById('screenshotContainer');
+            
+            const finalImg = new Image();
+            finalImg.src = dataUrl;
+            finalImg.style.maxWidth = '100%';
+            finalImg.style.height = 'auto';
+            finalImg.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)';
+            
+            screenshotContainer.innerHTML = '';
+            screenshotContainer.appendChild(finalImg);
+            screenshotModal.style.display = 'flex';
+
+        } catch (error) {
+            console.error('Screenshot error:', error);
+            alert('Ошибка: ' + error.message);
         } finally {
-            captureArea.style.opacity = originalOpacity;
-            captureArea.style.visibility = originalVisibility;
+            MAX_FONT_SIZE = 40;
+            if (cloneContainer) cloneContainer.remove();
+            if (saveModal) saveModal.remove();
+            iosSaveBtn.innerHTML = originalHTML;
+            iosSaveBtn.disabled = false;
+            isSaving = false;
         }
     }
 
-    function showIOSGalleryHint() {
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && 'ontouchend' in document);
-        if (isIOS) {
-            const hintModal = document.getElementById('galleryHintModal');
-            if (hintModal) hintModal.style.display = 'flex';
-        }
-    }
-
-    // --- Сохранение ---
+    // --- Старый метод сохранения ---
     if (saveBtn) {
         const DomToImageLib = window.domtoimage;
-        if (!DomToImageLib) {
-            console.warn('Библиотека dom-to-image-more не загружена.');
-            saveBtn.disabled = true;
-            return;
-        }
-
-        saveBtn.disabled = false;
-
-        // Надёжная загрузка изображения
-        async function forceLoadImage(src, attempts = 3) {
-            for (let i = 0; i < attempts; i++) {
-                try {
-                    const img = new Image();
-                    img.crossOrigin = "anonymous";
-                    const cacheBustedSrc = src.includes('?') 
-                        ? src + '&t=' + Date.now() 
-                        : src + '?t=' + Date.now();
-
-                    await new Promise((resolve, reject) => {
-                        img.onload = () => resolve(img);
-                        img.onerror = () => {
-                            if (i === attempts - 1) reject(new Error(`Не удалось загрузить ${src}`));
-                            else resolve(null);
-                        };
-                        img.src = cacheBustedSrc;
-                    });
-
-                    if (!img) continue;
-                    if (img.decode) {
-                        try { await img.decode(); } catch (e) {}
-                    }
-                    return img;
-                } catch (e) {
-                    if (i === attempts - 1) throw e;
-                    await new Promise(r => setTimeout(r, 100));
-                }
-            }
-        }
-
-        async function imgToCanvas(img) {
-            if (!img || !img.naturalWidth) throw new Error('Изображение не загружено');
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d', { alpha: true });
-            
-            for (let i = 0; i < 3; i++) {
-                ctx.drawImage(img, 0, 0);
-                const data = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
-                if (data[3] !== 0) return canvas;
-                await new Promise(r => setTimeout(r, 50));
-            }
-            return canvas;
-        }
-
         saveBtn.onclick = async function () {
             if (isSaving) return;
             isSaving = true;
@@ -451,25 +511,10 @@
             let cloneContainer = null;
             let saveModal = null;
 
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === 'MacIntel' && 'ontouchend' in document);
-
             try {
                 if (document.activeElement?.blur) document.activeElement.blur();
                 fitAllFontSizes();
 
-                // === iOS Safari — специальный метод ===
-                if (isIOS) {
-                    const success = await saveAsScreenshotIOS();
-                    if (success) {
-                        saveBtn.innerHTML = originalHTML;
-                        saveBtn.disabled = false;
-                        isSaving = false;
-                        return;
-                    }
-                }
-
-                // === Обычный метод для остальных ===
                 saveModal = document.createElement('div');
                 saveModal.id = 'saveModal';
                 saveModal.innerHTML = `
@@ -534,6 +579,7 @@
                 await new Promise(r => requestAnimationFrame(r));
                 await new Promise(r => setTimeout(r, 200));
 
+                const originalMax = MAX_FONT_SIZE;
                 MAX_FONT_SIZE = 2000;
 
                 cloneContainer.querySelectorAll('.cell-editable').forEach(el => {
@@ -551,13 +597,18 @@
                     filter: (node) => node.tagName !== 'A'
                 });
 
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && 'ontouchend' in document);
+
                 if (isIOS && navigator.share) {
                     try {
                         const blob = await fetch(dataUrl).then(r => r.blob());
                         const file = new File([blob], `bingo_${Date.now()}.png`, { type: 'image/png' });
                         await navigator.share({ files: [file] });
                         return;
-                    } catch (e) {}
+                    } catch (e) {
+                        console.log('Share не сработал, используем download');
+                    }
                 }
 
                 const link = document.createElement('a');
@@ -565,11 +616,14 @@
                 link.href = dataUrl;
                 link.click();
 
-                if (isIOS) showIOSGalleryHint();
+                if (isIOS) {
+                    const hintModal = document.getElementById('galleryHintModal');
+                    if (hintModal) hintModal.style.display = 'flex';
+                }
 
             } catch (error) {
                 console.error('Save error:', error);
-                alert('Ошибка сохранения: ' + error.message + '\n\nНа iOS можно просто сделать скриншот экрана.');
+                alert('Ошибка сохранения: ' + error.message);
             } finally {
                 MAX_FONT_SIZE = 40;
                 if (cloneContainer) cloneContainer.remove();
@@ -581,7 +635,23 @@
         };
     }
 
-    // --- Кнопка «Сбросить текст» ---
+    if (iosSaveBtn) {
+        iosSaveBtn.onclick = createIosScreenshot;
+    }
+
+    const closeScreenshotModal = document.getElementById('closeScreenshotModal');
+    if (closeScreenshotModal) {
+        closeScreenshotModal.onclick = () => {
+            document.getElementById('iosScreenshotModal').style.display = 'none';
+        };
+    }
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && 'ontouchend' in document);
+    if (isIOS && iosSaveBtn) {
+        iosSaveBtn.style.display = 'block';
+    }
+
     function addResetButton() {
         const topRow = document.querySelector('.buttons-top-row');
         if (!topRow) return;

@@ -214,7 +214,7 @@ body {
 /* Верхняя строка: донат, сброс, музыка */
 .buttons-top-row {
     display: flex;
-    flex-wrap: wrap;          /* перенос на мобильных */
+    flex-wrap: wrap;
     justify-content: center;
     align-items: center;
     gap: 8px;
@@ -224,13 +224,13 @@ body {
 /* Ссылка-обёртка (донат) */
 .dnt-button-link {
     text-decoration: none;
-    flex: 1 1 0;             /* на десктопе делят место поровну */
+    flex: 1 1 0;
     min-width: 0;
 }
 
 /* Кнопка «Сбросить текст» (добавляется из JS) */
 #resetTextBtn {
-    flex: 1 1 0;             /* на десктопе равная доля */
+    flex: 1 1 0;
 }
 
 /* Круглая кнопка музыки */
@@ -349,18 +349,16 @@ body {
     .buttons-top-row {
         width: 100%;
     }
-    /* донат занимает всё доступное место, музыка справа */
     .dnt-button-link {
         flex: 1 1 auto;
     }
-    /* сброс уходит на новую строку и растягивается */
     #resetTextBtn {
         flex-basis: 100%;
         width: 100%;
-        order: 1;            /* после первой строки с донатом и музыкой */
+        order: 1;
     }
     .music-toggle-button {
-        order: 0;            /* остаётся на первой строке */
+        order: 0;
         align-self: center;
     }
     .save-button {

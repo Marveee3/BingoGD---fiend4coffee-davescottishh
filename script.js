@@ -451,6 +451,7 @@
             await new Promise(r => requestAnimationFrame(r));
             await new Promise(r => setTimeout(r, 200));
 
+            // Увеличиваем размер шрифта для экспорта (как в обычном методе)
             const originalMax = MAX_FONT_SIZE;
             MAX_FONT_SIZE = 2000;
 
@@ -459,7 +460,7 @@
                 fitFontSizeForExport(el);
             });
 
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 150)); // Чуть больше времени на рендер крупного текста
 
             const canvas = await html2canvas(cloneContainer, {
                 backgroundColor: '#fff6ef',
@@ -646,10 +647,13 @@
         };
     }
 
+    // Проверка на iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                 (navigator.platform === 'MacIntel' && 'ontouchend' in document);
-    if (isIOS && iosSaveBtn) {
-        iosSaveBtn.style.display = 'block';
+    
+    if (isIOS) {
+        if (iosSaveBtn) iosSaveBtn.style.display = 'block';
+        if (saveBtn) saveBtn.style.display = 'none'; // Скрываем обычную кнопку на iOS
     }
 
     function addResetButton() {

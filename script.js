@@ -20,7 +20,7 @@
     const progressBar = document.querySelector('.loading-progress-bar');
     let isSaving = false;
 
-    // --- Локальное сохранение текста в localStorage ---
+    // --- Локальное сохранение текста ---
     const STORAGE_KEY = 'bingoGridData_v1';
     let saveTimeout;
 
@@ -29,7 +29,7 @@
         const data = Array.from(editables).map(el => el.innerText.trim());
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        } catch (e) { /* хранилище переполнено или недоступно */ }
+        } catch (e) {}
     }
 
     function loadTexts() {
@@ -43,7 +43,7 @@
                     el.innerText = data[i] || '';
                 });
             }
-        } catch (e) { /* битые данные – игнорируем */ }
+        } catch (e) {}
     }
 
     function debouncedSave() {
@@ -51,7 +51,7 @@
         saveTimeout = setTimeout(saveTexts, 500);
     }
 
-    // --- Загрузка баннеров (локальных) ---
+    // --- Загрузка баннеров ---
     function updateLoadingProgress() {
         if (!progressBar) return;
         const progress = (loadedImages / totalImagesToLoad) * 100;
@@ -59,12 +59,10 @@
         
         if (loadedImages >= totalImagesToLoad && totalImagesToLoad > 0) {
             setTimeout(() => {
-                if (loadingScreen) {
-                    loadingScreen.classList.add('fade-out');
-                    setTimeout(() => {
-                        loadingScreen.style.display = 'none';
-                    }, 500);
-                }
+                loadingScreen.classList.add('fade-out');
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 500);
                 captureArea.style.opacity = '1';
                 captureArea.style.visibility = 'visible';
                 captureArea.classList.add('fade-in');
@@ -113,9 +111,7 @@
         if (playPromise !== undefined) {
             playPromise.catch(() => {
                 const tryPlayOnInteraction = function() {
-                    if (musicEnabled && bgMusic) {
-                        bgMusic.play().catch(e => console.log("Play error:", e));
-                    }
+                    if (musicEnabled && bgMusic) bgMusic.play().catch(() => {});
                     document.removeEventListener('click', tryPlayOnInteraction);
                     document.removeEventListener('touchstart', tryPlayOnInteraction);
                 };
@@ -126,14 +122,12 @@
     }
     
     function enableMusic() {
-        if (!bgMusic) return;
         musicEnabled = true;
         musicToggleBtn.classList.remove('muted');
         if (musicReady) playMusic();
     }
     
     function disableMusic() {
-        if (!bgMusic) return;
         musicEnabled = false;
         musicToggleBtn.classList.add('muted');
         bgMusic.pause();
@@ -161,7 +155,7 @@
             bgMusic.addEventListener('ended', function() {
                 if (musicEnabled) {
                     this.currentTime = 0;
-                    this.play().catch(e => console.log("Replay error:", e));
+                    this.play().catch(() => {});
                 }
             });
             musicToggleBtn.addEventListener('click', (e) => {
@@ -172,7 +166,7 @@
     }
     setTimeout(initMusic, 500);
 
-    // --- Подбор шрифта для экрана (с WRAP_THRESHOLD) ---
+    // --- Работа с шрифтами ---
     function fitFontSize(el) {
         const text = el.innerText.trim();
         if (!text) {
@@ -181,10 +175,12 @@
         }
         const parent = el.parentElement;
         if (!parent) return;
+
         let low = MIN_FONT_SIZE, high = MAX_FONT_SIZE, best = MIN_FONT_SIZE;
         el.style.whiteSpace = 'nowrap';
         el.style.wordBreak = 'normal';
         el.style.overflowWrap = 'normal';
+
         while (low <= high) {
             const mid = Math.floor((low + high) / 2);
             el.style.fontSize = mid + 'px';
@@ -195,15 +191,19 @@
                 high = mid - 1;
             }
         }
+
         if (best >= WRAP_THRESHOLD) {
             el.style.fontSize = best + 'px';
             return;
         }
+
         el.style.whiteSpace = 'pre-wrap';
         el.style.wordBreak = 'break-word';
         el.style.overflowWrap = 'break-word';
         el.style.fontSize = WRAP_THRESHOLD + 'px';
+
         if (el.scrollHeight <= parent.clientHeight + 1) return;
+
         low = MIN_FONT_SIZE;
         high = WRAP_THRESHOLD;
         best = MIN_FONT_SIZE;
@@ -220,48 +220,20 @@
         el.style.fontSize = best + 'px';
     }
 
-    // --- Подбор шрифта для экспорта (без ограничения WRAP_THRESHOLD) ---
     function fitFontSizeForExport(el) {
+        // Используется только в старом методе (оставлено для совместимости)
         const text = el.innerText.trim();
-        if (!text) {
-            el.style.fontSize = '1rem';
-            return;
-        }
+        if (!text) return;
         const parent = el.parentElement;
         if (!parent) return;
-        const limit = MAX_FONT_SIZE;
-
-        el.style.whiteSpace = 'nowrap';
-        el.style.wordBreak = 'normal';
-        el.style.overflowWrap = 'normal';
-
-        let low = MIN_FONT_SIZE;
-        let high = limit;
-        let best = MIN_FONT_SIZE;
-
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            el.style.fontSize = mid + 'px';
-            if (el.scrollHeight <= parent.clientHeight + 1 && el.scrollWidth <= parent.clientWidth + 1) {
-                best = mid;
-                low = mid + 1;
-            } else {
-                high = mid - 1;
-            }
-        }
-
-        el.style.fontSize = best + 'px';
-        if (el.scrollWidth <= parent.clientWidth + 1 && el.scrollHeight <= parent.clientHeight + 1) {
-            return;
-        }
 
         el.style.whiteSpace = 'pre-wrap';
         el.style.wordBreak = 'break-word';
         el.style.overflowWrap = 'break-word';
 
-        low = MIN_FONT_SIZE;
-        high = limit;
-        best = MIN_FONT_SIZE;
+        let low = MIN_FONT_SIZE;
+        let high = 2000;
+        let best = MIN_FONT_SIZE;
 
         while (low <= high) {
             const mid = Math.floor((low + high) / 2);
@@ -312,6 +284,7 @@
         const bottomBanner = document.getElementById('bottomBanner');
         const buttonRow = document.querySelector('.button-row');
         if (!topBanner || !bottomBanner || !buttonRow || !captureArea) return;
+
         const topHeight = topBanner.offsetHeight;
         const bottomHeight = bottomBanner.offsetHeight;
         const buttonHeight = buttonRow.offsetHeight;
@@ -319,117 +292,14 @@
         const viewportHeight = window.innerHeight;
         const viewportWidth = window.innerWidth;
         const availableSquare = viewportHeight - totalNonGrid;
-        const newWidth = Math.min(viewportWidth * 0.8, availableSquare);
+        const newWidth = Math.min(viewportWidth * 0.9, availableSquare);
         const finalWidth = Math.max(newWidth, 240);
         captureArea.style.width = finalWidth + 'px';
         fitAllFontSizes();
     }
 
-    // --- Надёжное преобразование изображения в Canvas с ожиданием декодирования (iOS fix) ---
-    async function imgToCanvasAsync(img) {
-        // Убеждаемся, что изображение полностью загружено и декодировано
-        if (!img.complete || img.naturalWidth === 0) {
-            await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-                if (img.complete && img.naturalWidth > 0) resolve();
-            });
-        }
-        
-        // Используем decode() когда доступно (современные браузеры)
-        if (img.decode) {
-            try {
-                await img.decode();
-            } catch (err) {
-                console.warn('decode failed, continuing anyway', err);
-            }
-        }
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        
-        // Проверка, что canvas не пустой (доп. защита для iOS)
-        try {
-            const pixel = ctx.getImageData(Math.floor(canvas.width/2), Math.floor(canvas.height/2), 1, 1).data;
-            const isEmpty = pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0 && pixel[3] === 0;
-            if (isEmpty && canvas.width > 0 && canvas.height > 0) {
-                console.warn('Canvas appears empty, retrying draw...');
-                ctx.drawImage(img, 0, 0);
-            }
-        } catch(e) { /* не критично */ }
-        
-        return canvas;
-    }
-    // --- FORCE LOAD IMAGE (обход кэша + decode) ---
-    async function forceLoadImage(src) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-
-            // cache bust (важно для iOS)
-            img.src = src + '?t=' + Date.now();
-
-            img.onload = async () => {
-                if (img.decode) {
-                    try {
-                        await img.decode();
-                    } catch (e) {}
-                }
-                resolve(img);
-            };
-
-            img.onerror = reject;
-        });
-    }
-
-    // --- CANVAS DRAW С RETRY ---
-    async function imgToCanvasAsync(img, retries = 2) {
-        if (img.decode) {
-            try {
-                await img.decode();
-            } catch {}
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-
-        try {
-            const pixel = ctx.getImageData(
-                Math.floor(canvas.width / 2),
-                Math.floor(canvas.height / 2),
-                1,
-                1
-            ).data;
-
-            const empty = pixel[3] === 0;
-
-            if (empty && retries > 0) {
-                console.warn('Retry drawing image...');
-                await new Promise(r => setTimeout(r, 100));
-                return imgToCanvasAsync(img, retries - 1);
-            }
-        } catch {}
-
-        return canvas;
-    }
-
-    // --- Сохранение с надёжным преобразованием баннеров в canvas (исправлено для iOS) ---
-        // === УЛУЧШЕННАЯ СИСТЕМА СОХРАНЕНИЯ (особенно для iOS) ===
+    // === НОВАЯ СИСТЕМА СОХРАНЕНИЯ ЧЕРЕЗ CANVAS ===
     if (saveBtn) {
-        const DomToImageLib = window.domtoimage;
-        if (!DomToImageLib) {
-            console.warn('Библиотека dom-to-image-more не загружена.');
-            saveBtn.disabled = true;
-            return;
-        }
-
         saveBtn.disabled = false;
 
         function showIOSGalleryHint() {
@@ -441,89 +311,34 @@
             }
         }
 
-        // Надёжная загрузка изображения с несколькими попытками
-        async function forceLoadImage(src, attempts = 3) {
-            for (let i = 0; i < attempts; i++) {
-                try {
-                    const img = new Image();
-                    img.crossOrigin = "anonymous";
+        async function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                const cacheBust = src + (src.includes('?') ? '&' : '?') + 't=' + Date.now();
+                img.src = cacheBust;
 
-                    // Принудительный bypass кэша
-                    const cacheBustedSrc = src.includes('?') 
-                        ? src + '&t=' + Date.now() 
-                        : src + '?t=' + Date.now();
-
-                    await new Promise((resolve, reject) => {
-                        img.onload = () => resolve(img);
-                        img.onerror = () => {
-                            if (i === attempts - 1) reject(new Error(`Не удалось загрузить ${src}`));
-                            else resolve(null); // попробуем ещё раз
-                        };
-                        img.src = cacheBustedSrc;
-                    });
-
-                    if (!img) continue;
-
-                    // Принудительное декодирование
-                    if (img.decode) {
-                        try { await img.decode(); } catch (e) {}
-                    }
-
-                    return img;
-                } catch (e) {
-                    if (i === attempts - 1) throw e;
-                    await new Promise(r => setTimeout(r, 100));
-                }
-            }
-        }
-
-        // Надёжное превращение img → canvas
-        async function imgToCanvas(img) {
-            if (!img || !img.naturalWidth) throw new Error('Изображение не загружено');
-
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-
-            const ctx = canvas.getContext('2d', { alpha: true });
-            
-            // Несколько попыток отрисовки
-            for (let i = 0; i < 3; i++) {
-                ctx.drawImage(img, 0, 0);
-                
-                // Проверка, что канвас не пустой
-                const data = ctx.getImageData(
-                    Math.floor(canvas.width / 2), 
-                    Math.floor(canvas.height / 2), 
-                    1, 1
-                ).data;
-                
-                if (data[3] !== 0) return canvas; // успешно
-
-                await new Promise(r => setTimeout(r, 50));
-            }
-
-            console.warn('Canvas всё ещё пустой после попыток');
-            return canvas;
+                img.onload = () => {
+                    if (img.decode) img.decode().catch(() => {});
+                    resolve(img);
+                };
+                img.onerror = () => reject(new Error(`Не удалось загрузить изображение`));
+            });
         }
 
         saveBtn.onclick = async function () {
             if (isSaving) return;
             isSaving = true;
-
             const originalHTML = saveBtn.innerHTML;
             saveBtn.innerHTML = 'Создание...';
             saveBtn.disabled = true;
 
-            let cloneContainer = null;
             let saveModal = null;
 
             try {
-                // Подготовка
                 if (document.activeElement?.blur) document.activeElement.blur();
                 fitAllFontSizes();
 
-                // Создаём модальное окно
                 saveModal = document.createElement('div');
                 saveModal.id = 'saveModal';
                 saveModal.innerHTML = `
@@ -535,87 +350,100 @@
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
 
-                const topImg = document.querySelector('.top-banner');
-                const bottomImg = document.querySelector('.bottom-banner');
+                const topImgEl = document.querySelector('.top-banner');
+                const bottomImgEl = document.querySelector('.bottom-banner');
 
-                // === ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА БАННЕРОВ ===
-                console.log('Force loading banners for iOS...');
-                const [topLoaded, bottomLoaded] = await Promise.all([
-                    forceLoadImage(topImg.src),
-                    forceLoadImage(bottomImg.src)
+                const [topImg, bottomImg] = await Promise.all([
+                    loadImage(topImgEl.src),
+                    loadImage(bottomImgEl.src)
                 ]);
 
-                const topCanvas = await imgToCanvas(topLoaded);
-                const bottomCanvas = await imgToCanvas(bottomLoaded);
-
-                // === СОЗДАНИЕ КЛОНА ДЛЯ ЭКСПОРТА ===
+                // Параметры холста
                 const EXPORT_WIDTH = 1250;
-                const SIDE_PADDING = 25;
-                const pixelRatio = Math.min(window.devicePixelRatio || 2, 2.5);
+                const PADDING = 30;
+                const GRID_SIZE_PX = EXPORT_WIDTH - PADDING * 2;
+                const BANNER_HEIGHT = Math.round(EXPORT_WIDTH * 0.22);
 
-                cloneContainer = document.createElement('div');
-                Object.assign(cloneContainer.style, {
-                    position: 'absolute',
-                    top: '-99999px',
-                    left: '-99999px',
-                    width: EXPORT_WIDTH + 'px',
-                    padding: `0 ${SIDE_PADDING}px`,
-                    backgroundColor: '#fff6ef',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    fontFamily: 'Arial, sans-serif'
-                });
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d', { alpha: true });
 
-                // Top banner
-                const topClone = document.querySelector('.top-banner-wrapper').cloneNode(true);
-                const topCloneImg = topClone.querySelector('img');
-                topCloneImg.replaceWith(topCanvas);
-                topCanvas.style.width = '100%';
-                topCanvas.style.display = 'block';
-                cloneContainer.appendChild(topClone);
+                canvas.width = EXPORT_WIDTH;
+                canvas.height = BANNER_HEIGHT * 2 + GRID_SIZE_PX + PADDING * 3;
+
+                // Фон
+                ctx.fillStyle = '#fff6ef';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Top Banner
+                const topRatio = topImg.width / topImg.height;
+                const topDrawWidth = Math.round(BANNER_HEIGHT * topRatio);
+                const topX = (EXPORT_WIDTH - topDrawWidth) / 2;
+                ctx.drawImage(topImg, topX, PADDING, topDrawWidth, BANNER_HEIGHT);
 
                 // Grid
-                const gridClone = document.getElementById('smartGrid').cloneNode(true);
-                gridClone.style.width = '100%';
-                gridClone.style.aspectRatio = '1 / 1';
-                cloneContainer.appendChild(gridClone);
+                const cellSize = GRID_SIZE_PX / 5;
+                const gridX = PADDING;
+                const gridY = PADDING + BANNER_HEIGHT + 25;
 
-                // Bottom banner
-                const bottomClone = document.querySelector('.bottom-banner-wrapper').cloneNode(true);
-                const bottomCloneImg = bottomClone.querySelector('img');
-                bottomCloneImg.replaceWith(bottomCanvas);
-                bottomCanvas.style.width = '100%';
-                bottomCanvas.style.display = 'block';
-                cloneContainer.appendChild(bottomClone);
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 6;
+                ctx.fillStyle = '#fff6ef';
 
-                document.body.appendChild(cloneContainer);
+                for (let row = 0; row < 5; row++) {
+                    for (let col = 0; col < 5; col++) {
+                        const x = gridX + col * cellSize;
+                        const y = gridY + row * cellSize;
+                        ctx.fillRect(x, y, cellSize, cellSize);
+                        ctx.strokeRect(x, y, cellSize, cellSize);
+                    }
+                }
 
-                // Даём браузеру время на рендер (критично для iOS)
-                await new Promise(r => requestAnimationFrame(r));
-                await new Promise(r => setTimeout(r, 200));
+                // Текст
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
 
-                // Увеличиваем размер шрифта для экспорта
-                const originalMax = MAX_FONT_SIZE;
-                MAX_FONT_SIZE = 2000;
+                const editables = document.querySelectorAll('.cell-editable');
+                editables.forEach((el, index) => {
+                    let text = el.innerText.trim();
+                    if (!text) return;
 
-                cloneContainer.querySelectorAll('.cell-editable').forEach(el => {
-                    el.style.lineHeight = '1.15';
-                    fitFontSizeForExport(el);
+                    const row = Math.floor(index / 5);
+                    const col = index % 5;
+                    const x = gridX + col * cellSize + cellSize / 2;
+                    const y = gridY + row * cellSize + cellSize / 2;
+
+                    let fontSize = Math.floor(cellSize * 0.24);
+                    ctx.font = `bold ${fontSize}px Arial`;
+
+                    let metrics = ctx.measureText(text);
+                    while (metrics.width > cellSize * 0.9 && fontSize > 16) {
+                        fontSize -= 3;
+                        ctx.font = `bold ${fontSize}px Arial`;
+                        metrics = ctx.measureText(text);
+                    }
+
+                    const lines = text.split('\n');
+                    const lineHeight = fontSize * 1.1;
+                    const totalHeight = lines.length * lineHeight;
+                    let startY = y - totalHeight / 2 + lineHeight / 2;
+
+                    lines.forEach(line => {
+                        ctx.fillText(line.trim(), x, startY);
+                        startY += lineHeight;
+                    });
                 });
 
-                await new Promise(r => setTimeout(r, 80));
-
-                // === ФИНАЛЬНЫЙ ЭКСПОРТ ===
-                const dataUrl = await DomToImageLib.toPng(cloneContainer, {
-                    quality: 1,
-                    pixelRatio: pixelRatio,
-                    backgroundColor: '#fff6ef',
-                    cacheBust: true,
-                    filter: (node) => node.tagName !== 'A' // убираем ссылки
-                });
+                // Bottom Banner
+                const bottomY = canvas.height - BANNER_HEIGHT - PADDING;
+                const bottomRatio = bottomImg.width / bottomImg.height;
+                const bottomDrawWidth = Math.round(BANNER_HEIGHT * bottomRatio);
+                const bottomX = (EXPORT_WIDTH - bottomDrawWidth) / 2;
+                ctx.drawImage(bottomImg, bottomX, bottomY, bottomDrawWidth, BANNER_HEIGHT);
 
                 // Сохранение
+                const dataUrl = canvas.toDataURL('image/png', 1.0);
+
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                     (navigator.platform === 'MacIntel' && 'ontouchend' in document);
 
@@ -625,37 +453,34 @@
                         const file = new File([blob], `bingo_${Date.now()}.png`, { type: 'image/png' });
                         await navigator.share({ files: [file] });
                         return;
-                    } catch (e) {
-                        console.log('Share не сработал, используем download');
-                    }
+                    } catch (e) {}
                 }
 
                 const link = document.createElement('a');
                 link.download = `bingo_${Date.now()}.png`;
                 link.href = dataUrl;
+                document.body.appendChild(link);
                 link.click();
+                document.body.removeChild(link);
 
                 if (isIOS) showIOSGalleryHint();
 
             } catch (error) {
-                console.error('Save error:', error);
-                alert('Ошибка сохранения: ' + error.message + '\n\nПопробуйте ещё раз.');
+                console.error(error);
+                alert('Ошибка сохранения: ' + error.message);
             } finally {
-                MAX_FONT_SIZE = 40; // возвращаем обратно
-                if (cloneContainer) cloneContainer.remove();
-                if (saveModal) saveModal.remove();
                 saveBtn.innerHTML = originalHTML;
                 saveBtn.disabled = false;
                 isSaving = false;
+                if (saveModal) saveModal.remove();
             }
         };
     }
 
-    // --- Кнопка «Сбросить текст» ---
+    // --- Кнопка сброса ---
     function addResetButton() {
         const topRow = document.querySelector('.buttons-top-row');
-        if (!topRow) return;
-        if (document.getElementById('resetTextBtn')) return;
+        if (!topRow || document.getElementById('resetTextBtn')) return;
 
         const resetBtn = document.createElement('button');
         resetBtn.id = 'resetTextBtn';
@@ -664,18 +489,14 @@
         resetBtn.addEventListener('click', () => {
             if (confirm('Вы точно хотите удалить весь текст?')) {
                 localStorage.removeItem(STORAGE_KEY);
-                const editables = document.querySelectorAll('.cell-editable');
-                editables.forEach(el => { el.innerText = ''; });
+                document.querySelectorAll('.cell-editable').forEach(el => el.innerText = '');
                 fitAllFontSizes();
             }
         });
 
         const musicBtn = document.getElementById('musicToggleBtn');
-        if (musicBtn) {
-            topRow.insertBefore(resetBtn, musicBtn);
-        } else {
-            topRow.appendChild(resetBtn);
-        }
+        if (musicBtn) topRow.insertBefore(resetBtn, musicBtn);
+        else topRow.appendChild(resetBtn);
     }
 
     window.addEventListener('load', () => {
@@ -687,9 +508,8 @@
     window.addEventListener('resize', adjustLayout);
 
     if (window.ResizeObserver) {
-        const ro = new ResizeObserver(() => {
+        new ResizeObserver(() => {
             if (!isSaving) fitAllFontSizes();
-        });
-        ro.observe(container);
+        }).observe(container);
     }
 })();

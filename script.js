@@ -325,7 +325,46 @@
         fitAllFontSizes();
     }
 
-    // --- Сохранение с надёжным преобразованием локальных баннеров в canvas ---
+    // --- Надёжное преобразование изображения в Canvas с ожиданием декодирования (iOS fix) ---
+    async function imgToCanvasAsync(img) {
+        // Убеждаемся, что изображение полностью загружено и декодировано
+        if (!img.complete || img.naturalWidth === 0) {
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                if (img.complete && img.naturalWidth > 0) resolve();
+            });
+        }
+        
+        // Используем decode() когда доступно (современные браузеры)
+        if (img.decode) {
+            try {
+                await img.decode();
+            } catch (err) {
+                console.warn('decode failed, continuing anyway', err);
+            }
+        }
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        
+        // Проверка, что canvas не пустой (доп. защита для iOS)
+        try {
+            const pixel = ctx.getImageData(Math.floor(canvas.width/2), Math.floor(canvas.height/2), 1, 1).data;
+            const isEmpty = pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0 && pixel[3] === 0;
+            if (isEmpty && canvas.width > 0 && canvas.height > 0) {
+                console.warn('Canvas appears empty, retrying draw...');
+                ctx.drawImage(img, 0, 0);
+            }
+        } catch(e) { /* не критично */ }
+        
+        return canvas;
+    }
+
+    // --- Сохранение с надёжным преобразованием баннеров в canvas (исправлено для iOS) ---
     if (saveBtn) {
         const DomToImageLib = window.domtoimage;
         if (!DomToImageLib) {
@@ -335,16 +374,6 @@
         } else {
             saveBtn.disabled = false;
             saveBtn.title = '';
-
-            // Преобразуем уже загруженное <img> в canvas (без fetch)
-            function imgToCanvas(img) {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.naturalWidth;
-                canvas.height = img.naturalHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                return canvas;
-            }
 
             function showIOSGalleryHint() {
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -429,13 +458,12 @@
                     const topImg = topWrapper.querySelector('.banner');
                     const bottomImg = bottomWrapper.querySelector('.banner');
                     if (!topImg || !bottomImg) throw new Error('Баннеры не найдены');
-                    if (topImg.naturalWidth === 0 || bottomImg.naturalWidth === 0) {
-                        throw new Error('Изображения баннеров ещё не загружены');
-                    }
-
-                    // Превращаем оригинальные img в canvas (гарантированно без CORS)
-                    const topCanvas = imgToCanvas(topImg);
-                    const bottomCanvas = imgToCanvas(bottomImg);
+                    
+                    // Принудительно ждём загрузки и декодирования исходных изображений
+                    console.log('Waiting for banner images to be ready...');
+                    const topCanvas = await imgToCanvasAsync(topImg);
+                    const bottomCanvas = await imgToCanvasAsync(bottomImg);
+                    console.log('Banners converted to canvas successfully');
 
                     const EXPORT_WIDTH = 1250;
                     const SIDE_PADDING = 25;
@@ -459,6 +487,8 @@
                     const topClone = topWrapper.cloneNode(true);
                     const topCloneImg = topClone.querySelector('.banner');
                     topCloneImg.replaceWith(topCanvas);
+                    // Копируем классы и стили для canvas
+                    topCanvas.className = topCloneImg.className;
                     topCanvas.style.width = '100%';
                     topCanvas.style.height = 'auto';
                     topCanvas.style.display = 'block';
@@ -474,6 +504,7 @@
                     const bottomClone = bottomWrapper.cloneNode(true);
                     const bottomCloneImg = bottomClone.querySelector('.banner');
                     bottomCloneImg.replaceWith(bottomCanvas);
+                    bottomCanvas.className = bottomCloneImg.className;
                     bottomCanvas.style.width = '100%';
                     bottomCanvas.style.height = 'auto';
                     bottomCanvas.style.display = 'block';
@@ -481,8 +512,9 @@
 
                     document.body.appendChild(cloneContainer);
 
+                    // Несколько кадров для рендеринга
                     await new Promise(r => requestAnimationFrame(r));
-                    await new Promise(r => requestAnimationFrame(r));
+                    await new Promise(r => setTimeout(r, 50));
 
                     // Подгоняем шрифты в клоне
                     MAX_FONT_SIZE = 2000;

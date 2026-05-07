@@ -598,8 +598,7 @@
                     filter: (node) => node.tagName !== 'A'
                 });
 
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && 'ontouchend' in document);
+                const isIOS = isIOSDevice();   // ← используем новую функцию
 
                 if (isIOS && navigator.share) {
                     try {
@@ -647,13 +646,19 @@
         };
     }
 
-    // Проверка на iOS
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === 'MacIntel' && 'ontouchend' in document);
-    
-    if (isIOS) {
-        if (iosSaveBtn) iosSaveBtn.style.display = 'block';
-        if (saveBtn) saveBtn.style.display = 'none'; // Скрываем обычную кнопку на iOS
+    // --- НАДЁЖНОЕ ОПРЕДЕЛЕНИЕ iOS (включая iPadOS 13+) ---
+    function isIOSDevice() {
+        if (/iPad|iPhone|iPod/.test(navigator.userAgent)) return true;
+        // iPadOS 13+ маскируется под Mac, но поддерживает multi‑touch
+        return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    }
+
+    if (isIOSDevice()) {
+        iosSaveBtn.style.display = 'block';
+        saveBtn.style.display = 'none';
+    } else {
+        iosSaveBtn.style.display = 'none';
+        saveBtn.style.display = 'block';
     }
 
     function addResetButton() {

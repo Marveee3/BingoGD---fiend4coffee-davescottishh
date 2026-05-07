@@ -417,6 +417,11 @@
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
 
+                // Двойной вызов для iOS: первый "прогревает" Safari, второй дает результат
+                if (isIOSDevice()) {
+                    await generateImageDataUrl();
+                    await new Promise(r => setTimeout(r, 100));
+                }
                 const dataUrl = await generateImageDataUrl();
 
                 const isIOS = isIOSDevice();
@@ -475,6 +480,9 @@
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
 
+                // Двойной вызов для iOS: первый "прогревает" Safari, второй дает результат
+                await generateImageDataUrl();
+                await new Promise(r => setTimeout(r, 100));
                 const dataUrl = await generateImageDataUrl();
 
                 const screenshotModal = document.getElementById('iosScreenshotModal');

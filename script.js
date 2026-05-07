@@ -301,9 +301,9 @@
     }
 
     // --- Генерация картинки (упрощённая и надёжная) ---
-    async function generateImageDataUrl() {
+    async function generateImageDataUrl(isWarmup = false) {
         if (document.activeElement?.blur) document.activeElement.blur();
-        fitAllFontSizes();
+        if (!isWarmup) fitAllFontSizes();
 
         const topImg = document.querySelector('.top-banner');
         const bottomImg = document.querySelector('.bottom-banner');
@@ -405,17 +405,35 @@
         await new Promise(r => setTimeout(r, 80));
 
         const DomToImageLib = window.domtoimage;
-        const dataUrl = await DomToImageLib.toPng(cloneContainer, {
-            quality: 1,
-            pixelRatio: pixelRatio,
-            backgroundColor: '#fff6ef',
-            cacheBust: true,
-            filter: (node) => node.tagName !== 'A'
-        });
+        let dataUrl = null;
+        try {
+            dataUrl = await DomToImageLib.toPng(cloneContainer, {
+                quality: 1,
+                pixelRatio: pixelRatio,
+                backgroundColor: '#fff6ef',
+                cacheBust: true,
+                filter: (node) => node.tagName !== 'A'
+            });
+        } catch (err) {
+            if (!isWarmup) throw err;
+        }
 
         cloneContainer.remove();
         MAX_FONT_SIZE = originalMax;
         return dataUrl;
+    }
+
+    // --- Прогрев для iOS (решает проблему пустых баннеров при первом сохранении) ---
+    async function warmupIOS() {
+        if (!isIOSDevice()) return;
+        try {
+            // Ждем немного после загрузки, чтобы браузер "успокоился"
+            await new Promise(r => setTimeout(r, 1500));
+            await generateImageDataUrl(true);
+            console.log('iOS Warmup completed');
+        } catch (e) {
+            console.warn('iOS Warmup failed:', e);
+        }
     }
 
     // --- Обработчик кнопки «Сохранить как фото» ---
@@ -577,6 +595,7 @@
         fitAllFontSizes();
         adjustLayout();
         addResetButton();
+        warmupIOS();
     });
 
     window.addEventListener('resize', adjustLayout);

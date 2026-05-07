@@ -52,7 +52,7 @@
         saveTimeout = setTimeout(saveTexts, 500);
     }
 
-    // --- Загрузка баннеров (локальных) ---
+    // --- Загрузка баннеров ---
     function updateLoadingProgress() {
         if (!progressBar) return;
         const progress = (loadedImages / totalImagesToLoad) * 100;
@@ -391,12 +391,14 @@
         const SIDE_PADDING = 25;
         const pixelRatio = Math.min(window.devicePixelRatio || 2, 2.5);
 
+        // Контейнер с фиксированной шириной и box-sizing: border-box
         const cloneContainer = document.createElement('div');
         Object.assign(cloneContainer.style, {
             position: 'absolute',
             top: '-99999px',
             left: '-99999px',
             width: EXPORT_WIDTH + 'px',
+            boxSizing: 'border-box',                     // ← важно!
             padding: `0 ${SIDE_PADDING}px`,
             backgroundColor: '#fff6ef',
             display: 'flex',
@@ -405,7 +407,7 @@
             fontFamily: 'Arial, sans-serif'
         });
 
-        // Клонируем верхний баннер
+        // Верхний баннер
         const topClone = document.querySelector('.top-banner-wrapper').cloneNode(true);
         const topCloneImg = topClone.querySelector('img');
         topCloneImg.replaceWith(topCanvas);
@@ -413,13 +415,15 @@
         topCanvas.style.display = 'block';
         cloneContainer.appendChild(topClone);
 
-        // Клонируем сетку
+        // Сетка с фиксированными размерами
         const gridClone = document.getElementById('smartGrid').cloneNode(true);
-        gridClone.style.width = '100%';
-        gridClone.style.aspectRatio = '1 / 1';
+        const GRID_SIDE = EXPORT_WIDTH - 2 * SIDE_PADDING;   // точная сторона квадрата
+        gridClone.style.width  = GRID_SIDE + 'px';
+        gridClone.style.height = GRID_SIDE + 'px';
+        gridClone.style.aspectRatio = 'auto';                // отключаем auto, чтобы не мешал
         cloneContainer.appendChild(gridClone);
 
-        // Клонируем нижний баннер
+        // Нижний баннер
         const bottomClone = document.querySelector('.bottom-banner-wrapper').cloneNode(true);
         const bottomCloneImg = bottomClone.querySelector('img');
         bottomCloneImg.replaceWith(bottomCanvas);
@@ -429,17 +433,20 @@
 
         document.body.appendChild(cloneContainer);
 
+        // Ждём рендер, чтобы размеры ячеек стали доступны
         await new Promise(r => requestAnimationFrame(r));
         await new Promise(r => setTimeout(r, 200));
 
+        // Сохраняем оригинальное ограничение и отключаем для экспорта
         const originalMax = MAX_FONT_SIZE;
         MAX_FONT_SIZE = 2000;
 
         cloneContainer.querySelectorAll('.cell-editable').forEach(el => {
-            el.style.lineHeight = '1.1';   // ← точно как в CSS
+            el.style.lineHeight = '1.1';                  // как в CSS
             fitFontSizeForExport(el);
         });
 
+        // Небольшая пауза, чтобы изменения шрифта применились
         await new Promise(r => setTimeout(r, 80));
 
         const DomToImageLib = window.domtoimage;
@@ -484,7 +491,6 @@
 
                 const dataUrl = await generateImageDataUrl();
 
-                // Для iOS – пробуем share, если нет – скачиваем
                 const isIOS = isIOSDevice();
                 if (isIOS && navigator.share) {
                     try {
@@ -541,7 +547,8 @@
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
 
-                const dataUrl = await generateImageDataUrl();   // тот же самый рендер!
+                // Используем тот же метод, что и для обычного сохранения
+                const dataUrl = await generateImageDataUrl();
 
                 const screenshotModal = document.getElementById('iosScreenshotModal');
                 const screenshotContainer = document.getElementById('screenshotContainer');
@@ -580,6 +587,7 @@
         return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
     }
 
+    // Показать правильную кнопку
     if (isIOSDevice()) {
         iosSaveBtn.style.display = 'block';
         saveBtn.style.display = 'none';

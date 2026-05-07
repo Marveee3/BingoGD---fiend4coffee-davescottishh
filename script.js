@@ -52,13 +52,38 @@
         saveTimeout = setTimeout(saveTexts, 500);
     }
 
-    // --- Загрузка баннеров ---
-    function updateLoadingProgress() {
+    // --- Загрузка баннеров и конвертация в Base64 для iOS ---
+    const bannerDataUrls = {
+        top: null,
+        bottom: null
+    };
+
+    async function imageToBase64(img) {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            return canvas.toDataURL('image/png');
+        } catch (e) {
+            console.error('Base64 conversion failed', e);
+            return null;
+        }
+    }
+
+    async function updateLoadingProgress() {
         if (!progressBar) return;
         const progress = (loadedImages / totalImagesToLoad) * 100;
         progressBar.style.width = progress + '%';
         
         if (loadedImages >= totalImagesToLoad && totalImagesToLoad > 0) {
+            // Конвертируем баннеры в Base64 сразу после загрузки
+            const topImg = document.querySelector('.top-banner');
+            const bottomImg = document.querySelector('.bottom-banner');
+            if (topImg) bannerDataUrls.top = await imageToBase64(topImg);
+            if (bottomImg) bannerDataUrls.bottom = await imageToBase64(bottomImg);
+
             setTimeout(() => {
                 if (loadingScreen) {
                     loadingScreen.classList.add('fade-out');
@@ -81,18 +106,15 @@
     function setupImageLoading() {
         const images = document.querySelectorAll('.banner');
         images.forEach(img => {
-            if (img.complete) {
+            const onFinish = () => {
                 loadedImages++;
                 updateLoadingProgress();
+            };
+            if (img.complete && img.naturalWidth > 0) {
+                onFinish();
             } else {
-                img.addEventListener('load', () => {
-                    loadedImages++;
-                    updateLoadingProgress();
-                });
-                img.addEventListener('error', () => {
-                    loadedImages++;
-                    updateLoadingProgress();
-                });
+                img.addEventListener('load', onFinish, { once: true });
+                img.addEventListener('error', onFinish, { once: true });
             }
         });
     }
@@ -301,54 +323,9 @@
     }
 
     // --- Генерация картинки (упрощённая и надёжная) ---
-    async function generateImageDataUrl(isWarmup = false) {
+    async function generateImageDataUrl() {
         if (document.activeElement?.blur) document.activeElement.blur();
-        if (!isWarmup) fitAllFontSizes();
-
-        const topImg = document.querySelector('.top-banner');
-        const bottomImg = document.querySelector('.bottom-banner');
-
-        if (!topImg || !bottomImg) {
-            throw new Error('Баннеры не найдены в DOM');
-        }
-
-        // Ждём полной загрузки баннеров (на случай невероятного сценария)
-        if (!topImg.complete || !bottomImg.complete || 
-            topImg.naturalWidth === 0 || bottomImg.naturalWidth === 0) {
-            await Promise.all([
-                new Promise((resolve) => {
-                    if (topImg.complete && topImg.naturalWidth > 0) return resolve();
-                    topImg.addEventListener('load', resolve, { once: true });
-                }),
-                new Promise((resolve) => {
-                    if (bottomImg.complete && bottomImg.naturalWidth > 0) return resolve();
-                    bottomImg.addEventListener('load', resolve, { once: true });
-                })
-            ]);
-        }
-
-        // Преобразуем DOM-изображения в canvas (проверка пикселей)
-        function domImgToCanvas(img) {
-            return new Promise((resolve, reject) => {
-                if (img.naturalWidth === 0) return reject(new Error('Изображение пустое'));
-                const canvas = document.createElement('canvas');
-                canvas.width = img.naturalWidth;
-                canvas.height = img.naturalHeight;
-                const ctx = canvas.getContext('2d', { alpha: true });
-                ctx.drawImage(img, 0, 0);
-                // Простейшая проверка пикселя в центре
-                const center = ctx.getImageData(
-                    Math.floor(canvas.width/2),
-                    Math.floor(canvas.height/2),
-                    1, 1
-                ).data;
-                if (center[3] === 0) return reject(new Error('Баннер отрисован, но центральный пиксель прозрачен'));
-                resolve(canvas);
-            });
-        }
-
-        const topCanvas = await domImgToCanvas(topImg);
-        const bottomCanvas = await domImgToCanvas(bottomImg);
+        fitAllFontSizes();
 
         const EXPORT_WIDTH = 1250;
         const SIDE_PADDING = 25;
@@ -369,11 +346,11 @@
             fontFamily: 'Arial, sans-serif'
         });
 
+        // Используем Base64 баннеры, если они готовы, иначе берем оригиналы
         const topClone = document.querySelector('.top-banner-wrapper').cloneNode(true);
-        const topCloneImg = topClone.querySelector('img');
-        topCloneImg.replaceWith(topCanvas);
-        topCanvas.style.width = '100%';
-        topCanvas.style.display = 'block';
+        if (bannerDataUrls.top) {
+            topClone.querySelector('img').src = bannerDataUrls.top;
+        }
         cloneContainer.appendChild(topClone);
 
         const gridClone = document.getElementById('smartGrid').cloneNode(true);
@@ -384,17 +361,16 @@
         cloneContainer.appendChild(gridClone);
 
         const bottomClone = document.querySelector('.bottom-banner-wrapper').cloneNode(true);
-        const bottomCloneImg = bottomClone.querySelector('img');
-        bottomCloneImg.replaceWith(bottomCanvas);
-        bottomCanvas.style.width = '100%';
-        bottomCanvas.style.display = 'block';
+        if (bannerDataUrls.bottom) {
+            bottomClone.querySelector('img').src = bannerDataUrls.bottom;
+        }
         cloneContainer.appendChild(bottomClone);
 
         document.body.appendChild(cloneContainer);
 
         // Даём браузеру отрисовать клон
         await new Promise(r => requestAnimationFrame(r));
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 150));
 
         const originalMax = MAX_FONT_SIZE;
         MAX_FONT_SIZE = 2000;
@@ -402,38 +378,20 @@
             el.style.lineHeight = '1.1';
             fitFontSizeForExport(el);
         });
-        await new Promise(r => setTimeout(r, 80));
+        await new Promise(r => setTimeout(r, 100));
 
         const DomToImageLib = window.domtoimage;
-        let dataUrl = null;
-        try {
-            dataUrl = await DomToImageLib.toPng(cloneContainer, {
-                quality: 1,
-                pixelRatio: pixelRatio,
-                backgroundColor: '#fff6ef',
-                cacheBust: true,
-                filter: (node) => node.tagName !== 'A'
-            });
-        } catch (err) {
-            if (!isWarmup) throw err;
-        }
+        const dataUrl = await DomToImageLib.toPng(cloneContainer, {
+            quality: 1,
+            pixelRatio: pixelRatio,
+            backgroundColor: '#fff6ef',
+            cacheBust: true,
+            filter: (node) => node.tagName !== 'A'
+        });
 
         cloneContainer.remove();
         MAX_FONT_SIZE = originalMax;
         return dataUrl;
-    }
-
-    // --- Прогрев для iOS (решает проблему пустых баннеров при первом сохранении) ---
-    async function warmupIOS() {
-        if (!isIOSDevice()) return;
-        try {
-            // Ждем немного после загрузки, чтобы браузер "успокоился"
-            await new Promise(r => setTimeout(r, 1500));
-            await generateImageDataUrl(true);
-            console.log('iOS Warmup completed');
-        } catch (e) {
-            console.warn('iOS Warmup failed:', e);
-        }
     }
 
     // --- Обработчик кнопки «Сохранить как фото» ---
@@ -595,7 +553,6 @@
         fitAllFontSizes();
         adjustLayout();
         addResetButton();
-        warmupIOS();
     });
 
     window.addEventListener('resize', adjustLayout);

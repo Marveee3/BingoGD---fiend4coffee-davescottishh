@@ -221,7 +221,7 @@
         el.style.fontSize = best + 'px';
     }
 
-    // --- Подбор шрифта для экспорта (без ограничения WRAP_THRESHOLD) ---
+    // --- Подбор шрифта для экспорта (максимальное заполнение клетки) ---
     function fitFontSizeForExport(el) {
         const text = el.innerText.trim();
         if (!text) {
@@ -232,9 +232,10 @@
         if (!parent) return;
         const limit = MAX_FONT_SIZE;
 
-        el.style.whiteSpace = 'nowrap';
-        el.style.wordBreak = 'normal';
-        el.style.overflowWrap = 'normal';
+        // Сразу включаем многострочный режим – текст должен заполнять клетку полностью
+        el.style.whiteSpace = 'pre-wrap';
+        el.style.wordBreak = 'break-word';
+        el.style.overflowWrap = 'break-word';
 
         let low = MIN_FONT_SIZE;
         let high = limit;
@@ -243,31 +244,8 @@
         while (low <= high) {
             const mid = Math.floor((low + high) / 2);
             el.style.fontSize = mid + 'px';
+            // Проверяем, что текст помещается по высоте и не вылезает за ширину (с учётом переносов)
             if (el.scrollHeight <= parent.clientHeight + 1 && el.scrollWidth <= parent.clientWidth + 1) {
-                best = mid;
-                low = mid + 1;
-            } else {
-                high = mid - 1;
-            }
-        }
-
-        el.style.fontSize = best + 'px';
-        if (el.scrollWidth <= parent.clientWidth + 1 && el.scrollHeight <= parent.clientHeight + 1) {
-            return;
-        }
-
-        el.style.whiteSpace = 'pre-wrap';
-        el.style.wordBreak = 'break-word';
-        el.style.overflowWrap = 'break-word';
-
-        low = MIN_FONT_SIZE;
-        high = limit;
-        best = MIN_FONT_SIZE;
-
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            el.style.fontSize = mid + 'px';
-            if (el.scrollHeight <= parent.clientHeight + 1) {
                 best = mid;
                 low = mid + 1;
             } else {
@@ -326,6 +304,7 @@
         fitAllFontSizes();
     }
 
+    // ========== УЛУЧШЕННАЯ ЗАГРУЗКА ИЗОБРАЖЕНИЙ С ПРОВЕРКОЙ ==========
     async function forceLoadImage(src, attempts = 3) {
         for (let i = 0; i < attempts; i++) {
             try {
@@ -336,42 +315,95 @@
                     : src + '?t=' + Date.now();
 
                 await new Promise((resolve, reject) => {
-                    img.onload = () => resolve(img);
+                    img.onload = () => {
+                        if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                            reject(new Error('Загруженное изображение имеет нулевые размеры'));
+                        } else {
+                            resolve(img);
+                        }
+                    };
                     img.onerror = () => {
-                        if (i === attempts - 1) reject(new Error(`Не удалось загрузить ${src}`));
-                        else resolve(null);
+                        reject(new Error(`Ошибка сети при загрузке ${src}`));
                     };
                     img.src = cacheBustedSrc;
                 });
 
-                if (!img) continue;
                 if (img.decode) {
-                    try { await img.decode(); } catch (e) {}
+                    try { await img.decode(); } catch (e) {
+                        throw new Error('Ошибка декодирования изображения');
+                    }
                 }
+
+                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                    throw new Error('Изображение пустое после декодирования');
+                }
+
                 return img;
             } catch (e) {
+                console.warn(`Попытка ${i + 1}/${attempts} загрузки ${src}:`, e.message);
                 if (i === attempts - 1) throw e;
-                await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => setTimeout(r, 200));
             }
         }
     }
 
+    // ========== УЛУЧШЕННАЯ ПРОВЕРКА CANVAS НА ПУСТОТУ ==========
     async function imgToCanvas(img) {
         if (!img || !img.naturalWidth) throw new Error('Изображение не загружено');
         const canvas = document.createElement('canvas');
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         const ctx = canvas.getContext('2d', { alpha: true });
-        for (let i = 0; i < 3; i++) {
+
+        for (let attempt = 0; attempt < 5; attempt++) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(img, 0, 0);
-            const data = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
-            if (data[3] !== 0) return canvas;
-            await new Promise(r => setTimeout(r, 50));
+
+            const checkPoints = [
+                { x: Math.floor(canvas.width / 2), y: Math.floor(canvas.height / 2) },
+                { x: 1, y: 1 },
+                { x: canvas.width - 2, y: 1 },
+                { x: 1, y: canvas.height - 2 },
+                { x: canvas.width - 2, y: canvas.height - 2 }
+            ];
+
+            let anyOpaque = false;
+            for (const pt of checkPoints) {
+                const pixel = ctx.getImageData(pt.x, pt.y, 1, 1).data;
+                if (pixel[3] > 0) {
+                    anyOpaque = true;
+                    break;
+                }
+            }
+
+            if (anyOpaque) return canvas;
+
+            await new Promise(r => setTimeout(r, 100));
         }
-        return canvas;
+
+        throw new Error('Баннер отрисован, но все пиксели прозрачны (возможно, изображение битое или не загрузилось)');
     }
 
-    // ========== ЕДИНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЯ ==========
+    // ========== ОЖИДАНИЕ ВИДИМОСТИ БАННЕРА В DOM ==========
+    function waitForElementVisible(element, timeoutMs = 3000) {
+        return new Promise((resolve, reject) => {
+            if (!element) return reject(new Error('Элемент не найден'));
+            const start = Date.now();
+            function check() {
+                const rect = element.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0 && element.offsetHeight > 0) {
+                    resolve();
+                } else if (Date.now() - start > timeoutMs) {
+                    reject(new Error('Баннер не стал видимым за отведённое время'));
+                } else {
+                    requestAnimationFrame(check);
+                }
+            }
+            check();
+        });
+    }
+
+    // ========== ЕДИНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЯ (УСИЛЕННАЯ) ==========
     async function generateImageDataUrl() {
         if (document.activeElement?.blur) document.activeElement.blur();
         fitAllFontSizes();
@@ -379,26 +411,46 @@
         const topImg = document.querySelector('.top-banner');
         const bottomImg = document.querySelector('.bottom-banner');
 
+        if (!topImg || !bottomImg) {
+            throw new Error('Баннеры не найдены в DOM');
+        }
+
+        console.log('⏳ Ожидание видимости баннеров...');
+        try {
+            await Promise.all([
+                waitForElementVisible(topImg, 5000),
+                waitForElementVisible(bottomImg, 5000)
+            ]);
+            console.log('✅ Баннеры видны в DOM');
+        } catch (e) {
+            console.warn('⚠️ Баннеры не видны, пробуем принудительную загрузку');
+        }
+
+        console.log('🔄 Принудительная загрузка баннеров...');
         const [topLoaded, bottomLoaded] = await Promise.all([
             forceLoadImage(topImg.src),
             forceLoadImage(bottomImg.src)
         ]);
+        console.log('✅ Баннеры загружены, размеры:', 
+            topLoaded.naturalWidth + 'x' + topLoaded.naturalHeight,
+            bottomLoaded.naturalWidth + 'x' + bottomLoaded.naturalHeight);
 
+        console.log('🎨 Рендерим в canvas и проверяем пиксели...');
         const topCanvas = await imgToCanvas(topLoaded);
         const bottomCanvas = await imgToCanvas(bottomLoaded);
+        console.log('✅ Canvas созданы, изображения не пустые');
 
         const EXPORT_WIDTH = 1250;
         const SIDE_PADDING = 25;
         const pixelRatio = Math.min(window.devicePixelRatio || 2, 2.5);
 
-        // Контейнер с фиксированной шириной и box-sizing: border-box
         const cloneContainer = document.createElement('div');
         Object.assign(cloneContainer.style, {
             position: 'absolute',
             top: '-99999px',
             left: '-99999px',
             width: EXPORT_WIDTH + 'px',
-            boxSizing: 'border-box',                     // ← важно!
+            boxSizing: 'border-box',
             padding: `0 ${SIDE_PADDING}px`,
             backgroundColor: '#fff6ef',
             display: 'flex',
@@ -407,7 +459,6 @@
             fontFamily: 'Arial, sans-serif'
         });
 
-        // Верхний баннер
         const topClone = document.querySelector('.top-banner-wrapper').cloneNode(true);
         const topCloneImg = topClone.querySelector('img');
         topCloneImg.replaceWith(topCanvas);
@@ -415,15 +466,13 @@
         topCanvas.style.display = 'block';
         cloneContainer.appendChild(topClone);
 
-        // Сетка с фиксированными размерами
         const gridClone = document.getElementById('smartGrid').cloneNode(true);
-        const GRID_SIDE = EXPORT_WIDTH - 2 * SIDE_PADDING;   // точная сторона квадрата
+        const GRID_SIDE = EXPORT_WIDTH - 2 * SIDE_PADDING;
         gridClone.style.width  = GRID_SIDE + 'px';
         gridClone.style.height = GRID_SIDE + 'px';
-        gridClone.style.aspectRatio = 'auto';                // отключаем auto, чтобы не мешал
+        gridClone.style.aspectRatio = 'auto';
         cloneContainer.appendChild(gridClone);
 
-        // Нижний баннер
         const bottomClone = document.querySelector('.bottom-banner-wrapper').cloneNode(true);
         const bottomCloneImg = bottomClone.querySelector('img');
         bottomCloneImg.replaceWith(bottomCanvas);
@@ -433,22 +482,36 @@
 
         document.body.appendChild(cloneContainer);
 
-        // Ждём рендер, чтобы размеры ячеек стали доступны
+        console.log('⏳ Ожидание рендера клона...');
         await new Promise(r => requestAnimationFrame(r));
+        const startWait = Date.now();
+        while (Date.now() - startWait < 3000) {
+            const topRect = topCanvas.getBoundingClientRect();
+            const bottomRect = bottomCanvas.getBoundingClientRect();
+            if (topRect.width > 0 && topRect.height > 0 && bottomRect.width > 0 && bottomRect.height > 0) {
+                break;
+            }
+            await new Promise(r => requestAnimationFrame(r));
+        }
+        const firstCell = cloneContainer.querySelector('.grid-cell');
+        if (firstCell) {
+            const cellWaitStart = Date.now();
+            while (Date.now() - cellWaitStart < 3000) {
+                if (firstCell.clientHeight > 0 && firstCell.clientWidth > 0) break;
+                await new Promise(r => requestAnimationFrame(r));
+            }
+        }
         await new Promise(r => setTimeout(r, 200));
 
-        // Сохраняем оригинальное ограничение и отключаем для экспорта
         const originalMax = MAX_FONT_SIZE;
         MAX_FONT_SIZE = 2000;
-
         cloneContainer.querySelectorAll('.cell-editable').forEach(el => {
-            el.style.lineHeight = '1.1';                  // как в CSS
+            el.style.lineHeight = '1.1';
             fitFontSizeForExport(el);
         });
-
-        // Небольшая пауза, чтобы изменения шрифта применились
         await new Promise(r => setTimeout(r, 80));
 
+        console.log('📸 Генерация PNG через dom-to-image...');
         const DomToImageLib = window.domtoimage;
         const dataUrl = await DomToImageLib.toPng(cloneContainer, {
             quality: 1,
@@ -458,10 +521,9 @@
             filter: (node) => node.tagName !== 'A'
         });
 
-        // Убираем клон
         cloneContainer.remove();
         MAX_FONT_SIZE = originalMax;
-
+        console.log('✅ Изображение успешно создано');
         return dataUrl;
     }
 
@@ -477,17 +539,24 @@
 
             let saveModal = null;
             try {
-                // Показываем модалку загрузки
+                // Показываем модалку
                 saveModal = document.createElement('div');
                 saveModal.id = 'saveModal';
                 saveModal.innerHTML = `
                     <div class="save-modal-content">
                         <div class="save-spinner"></div>
-                        <p>Создаём изображение...</p>
+                        <p id="saveModalText">Подготовка...</p>
                     </div>
                 `;
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
+
+                // === ДОПОЛНИТЕЛЬНАЯ ЗАДЕРЖКА 10 СЕКУНД ===
+                const modalText = document.getElementById('saveModalText');
+                if (modalText) modalText.textContent = 'Ожидание загрузки (10 сек)...';
+                await new Promise(r => setTimeout(r, 10_000));
+                if (modalText) modalText.textContent = 'Создаём изображение...';
+                // =====================================
 
                 const dataUrl = await generateImageDataUrl();
 
@@ -541,13 +610,19 @@
                 saveModal.innerHTML = `
                     <div class="save-modal-content">
                         <div class="save-spinner"></div>
-                        <p>Подготовка скриншота...</p>
+                        <p id="saveModalText">Подготовка...</p>
                     </div>
                 `;
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
 
-                // Используем тот же метод, что и для обычного сохранения
+                // === ДОПОЛНИТЕЛЬНАЯ ЗАДЕРЖКА 10 СЕКУНД ===
+                const modalText = document.getElementById('saveModalText');
+                if (modalText) modalText.textContent = 'Ожидание загрузки (10 сек)...';
+                await new Promise(r => setTimeout(r, 10_000));
+                if (modalText) modalText.textContent = 'Создаём изображение...';
+                // =====================================
+
                 const dataUrl = await generateImageDataUrl();
 
                 const screenshotModal = document.getElementById('iosScreenshotModal');

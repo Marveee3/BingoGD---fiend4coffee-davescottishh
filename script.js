@@ -66,8 +66,6 @@
                         loadingScreen.style.display = 'none';
                     }, 500);
                 }
-                captureArea.style.opacity = '1';
-                captureArea.style.visibility = 'visible';
                 captureArea.classList.add('fade-in');
                 adjustLayout();
             }, 300);
@@ -232,7 +230,6 @@
         if (!parent) return;
         const limit = MAX_FONT_SIZE;
 
-        // Сразу включаем многострочный режим – текст должен заполнять клетку полностью
         el.style.whiteSpace = 'pre-wrap';
         el.style.wordBreak = 'break-word';
         el.style.overflowWrap = 'break-word';
@@ -244,7 +241,6 @@
         while (low <= high) {
             const mid = Math.floor((low + high) / 2);
             el.style.fontSize = mid + 'px';
-            // Проверяем, что текст помещается по высоте и не вылезает за ширину (с учётом переносов)
             if (el.scrollHeight <= parent.clientHeight + 1 && el.scrollWidth <= parent.clientWidth + 1) {
                 best = mid;
                 low = mid + 1;
@@ -304,106 +300,7 @@
         fitAllFontSizes();
     }
 
-    // ========== УЛУЧШЕННАЯ ЗАГРУЗКА ИЗОБРАЖЕНИЙ С ПРОВЕРКОЙ ==========
-    async function forceLoadImage(src, attempts = 3) {
-        for (let i = 0; i < attempts; i++) {
-            try {
-                const img = new Image();
-                img.crossOrigin = "anonymous";
-                const cacheBustedSrc = src.includes('?') 
-                    ? src + '&t=' + Date.now() 
-                    : src + '?t=' + Date.now();
-
-                await new Promise((resolve, reject) => {
-                    img.onload = () => {
-                        if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-                            reject(new Error('Загруженное изображение имеет нулевые размеры'));
-                        } else {
-                            resolve(img);
-                        }
-                    };
-                    img.onerror = () => {
-                        reject(new Error(`Ошибка сети при загрузке ${src}`));
-                    };
-                    img.src = cacheBustedSrc;
-                });
-
-                if (img.decode) {
-                    try { await img.decode(); } catch (e) {
-                        throw new Error('Ошибка декодирования изображения');
-                    }
-                }
-
-                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-                    throw new Error('Изображение пустое после декодирования');
-                }
-
-                return img;
-            } catch (e) {
-                console.warn(`Попытка ${i + 1}/${attempts} загрузки ${src}:`, e.message);
-                if (i === attempts - 1) throw e;
-                await new Promise(r => setTimeout(r, 200));
-            }
-        }
-    }
-
-    // ========== УЛУЧШЕННАЯ ПРОВЕРКА CANVAS НА ПУСТОТУ ==========
-    async function imgToCanvas(img) {
-        if (!img || !img.naturalWidth) throw new Error('Изображение не загружено');
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d', { alpha: true });
-
-        for (let attempt = 0; attempt < 5; attempt++) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-
-            const checkPoints = [
-                { x: Math.floor(canvas.width / 2), y: Math.floor(canvas.height / 2) },
-                { x: 1, y: 1 },
-                { x: canvas.width - 2, y: 1 },
-                { x: 1, y: canvas.height - 2 },
-                { x: canvas.width - 2, y: canvas.height - 2 }
-            ];
-
-            let anyOpaque = false;
-            for (const pt of checkPoints) {
-                const pixel = ctx.getImageData(pt.x, pt.y, 1, 1).data;
-                if (pixel[3] > 0) {
-                    anyOpaque = true;
-                    break;
-                }
-            }
-
-            if (anyOpaque) return canvas;
-
-            await new Promise(r => setTimeout(r, 100));
-        }
-
-        throw new Error('Баннер отрисован, но все пиксели прозрачны (возможно, изображение битое или не загрузилось)');
-    }
-
-    // ========== ОЖИДАНИЕ ВИДИМОСТИ БАННЕРА В DOM ==========
-    function waitForElementVisible(element, timeoutMs = 3000) {
-        return new Promise((resolve, reject) => {
-            if (!element) return reject(new Error('Элемент не найден'));
-            const start = Date.now();
-            function check() {
-                const rect = element.getBoundingClientRect();
-                if (rect.width > 0 && rect.height > 0 && element.offsetHeight > 0) {
-                    resolve();
-                } else if (Date.now() - start > timeoutMs) {
-                    reject(new Error('Баннер не стал видимым за отведённое время'));
-                } else {
-                    requestAnimationFrame(check);
-                }
-            }
-            check();
-        });
-    }
-
-    // ========== ЕДИНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЯ (УСИЛЕННАЯ) ==========
+    // --- Генерация картинки (упрощённая и надёжная) ---
     async function generateImageDataUrl() {
         if (document.activeElement?.blur) document.activeElement.blur();
         fitAllFontSizes();
@@ -415,30 +312,43 @@
             throw new Error('Баннеры не найдены в DOM');
         }
 
-        console.log('⏳ Ожидание видимости баннеров...');
-        try {
+        // Ждём полной загрузки баннеров (на случай невероятного сценария)
+        if (!topImg.complete || !bottomImg.complete || 
+            topImg.naturalWidth === 0 || bottomImg.naturalWidth === 0) {
             await Promise.all([
-                waitForElementVisible(topImg, 5000),
-                waitForElementVisible(bottomImg, 5000)
+                new Promise((resolve) => {
+                    if (topImg.complete && topImg.naturalWidth > 0) return resolve();
+                    topImg.addEventListener('load', resolve, { once: true });
+                }),
+                new Promise((resolve) => {
+                    if (bottomImg.complete && bottomImg.naturalWidth > 0) return resolve();
+                    bottomImg.addEventListener('load', resolve, { once: true });
+                })
             ]);
-            console.log('✅ Баннеры видны в DOM');
-        } catch (e) {
-            console.warn('⚠️ Баннеры не видны, пробуем принудительную загрузку');
         }
 
-        console.log('🔄 Принудительная загрузка баннеров...');
-        const [topLoaded, bottomLoaded] = await Promise.all([
-            forceLoadImage(topImg.src),
-            forceLoadImage(bottomImg.src)
-        ]);
-        console.log('✅ Баннеры загружены, размеры:', 
-            topLoaded.naturalWidth + 'x' + topLoaded.naturalHeight,
-            bottomLoaded.naturalWidth + 'x' + bottomLoaded.naturalHeight);
+        // Преобразуем DOM-изображения в canvas (проверка пикселей)
+        function domImgToCanvas(img) {
+            return new Promise((resolve, reject) => {
+                if (img.naturalWidth === 0) return reject(new Error('Изображение пустое'));
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d', { alpha: true });
+                ctx.drawImage(img, 0, 0);
+                // Простейшая проверка пикселя в центре
+                const center = ctx.getImageData(
+                    Math.floor(canvas.width/2),
+                    Math.floor(canvas.height/2),
+                    1, 1
+                ).data;
+                if (center[3] === 0) return reject(new Error('Баннер отрисован, но центральный пиксель прозрачен'));
+                resolve(canvas);
+            });
+        }
 
-        console.log('🎨 Рендерим в canvas и проверяем пиксели...');
-        const topCanvas = await imgToCanvas(topLoaded);
-        const bottomCanvas = await imgToCanvas(bottomLoaded);
-        console.log('✅ Canvas созданы, изображения не пустые');
+        const topCanvas = await domImgToCanvas(topImg);
+        const bottomCanvas = await domImgToCanvas(bottomImg);
 
         const EXPORT_WIDTH = 1250;
         const SIDE_PADDING = 25;
@@ -482,26 +392,9 @@
 
         document.body.appendChild(cloneContainer);
 
-        console.log('⏳ Ожидание рендера клона...');
+        // Даём браузеру отрисовать клон
         await new Promise(r => requestAnimationFrame(r));
-        const startWait = Date.now();
-        while (Date.now() - startWait < 3000) {
-            const topRect = topCanvas.getBoundingClientRect();
-            const bottomRect = bottomCanvas.getBoundingClientRect();
-            if (topRect.width > 0 && topRect.height > 0 && bottomRect.width > 0 && bottomRect.height > 0) {
-                break;
-            }
-            await new Promise(r => requestAnimationFrame(r));
-        }
-        const firstCell = cloneContainer.querySelector('.grid-cell');
-        if (firstCell) {
-            const cellWaitStart = Date.now();
-            while (Date.now() - cellWaitStart < 3000) {
-                if (firstCell.clientHeight > 0 && firstCell.clientWidth > 0) break;
-                await new Promise(r => requestAnimationFrame(r));
-            }
-        }
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 100));
 
         const originalMax = MAX_FONT_SIZE;
         MAX_FONT_SIZE = 2000;
@@ -511,7 +404,6 @@
         });
         await new Promise(r => setTimeout(r, 80));
 
-        console.log('📸 Генерация PNG через dom-to-image...');
         const DomToImageLib = window.domtoimage;
         const dataUrl = await DomToImageLib.toPng(cloneContainer, {
             quality: 1,
@@ -523,7 +415,6 @@
 
         cloneContainer.remove();
         MAX_FONT_SIZE = originalMax;
-        console.log('✅ Изображение успешно создано');
         return dataUrl;
     }
 
@@ -539,24 +430,16 @@
 
             let saveModal = null;
             try {
-                // Показываем модалку
                 saveModal = document.createElement('div');
                 saveModal.id = 'saveModal';
                 saveModal.innerHTML = `
                     <div class="save-modal-content">
                         <div class="save-spinner"></div>
-                        <p id="saveModalText">Подготовка...</p>
+                        <p>Создаём изображение...</p>
                     </div>
                 `;
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
-
-                // === ДОПОЛНИТЕЛЬНАЯ ЗАДЕРЖКА 10 СЕКУНД ===
-                const modalText = document.getElementById('saveModalText');
-                if (modalText) modalText.textContent = 'Ожидание загрузки (10 сек)...';
-                await new Promise(r => setTimeout(r, 10_000));
-                if (modalText) modalText.textContent = 'Создаём изображение...';
-                // =====================================
 
                 const dataUrl = await generateImageDataUrl();
 
@@ -610,18 +493,11 @@
                 saveModal.innerHTML = `
                     <div class="save-modal-content">
                         <div class="save-spinner"></div>
-                        <p id="saveModalText">Подготовка...</p>
+                        <p>Создаём изображение...</p>
                     </div>
                 `;
                 document.body.appendChild(saveModal);
                 saveModal.style.display = 'flex';
-
-                // === ДОПОЛНИТЕЛЬНАЯ ЗАДЕРЖКА 10 СЕКУНД ===
-                const modalText = document.getElementById('saveModalText');
-                if (modalText) modalText.textContent = 'Ожидание загрузки (10 сек)...';
-                await new Promise(r => setTimeout(r, 10_000));
-                if (modalText) modalText.textContent = 'Создаём изображение...';
-                // =====================================
 
                 const dataUrl = await generateImageDataUrl();
 
